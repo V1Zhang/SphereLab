@@ -29,10 +29,10 @@ SphereLab 是一个纯前端球幕预演器：用 three.js 渲染参数化场馆
 | 占位内容 | `src/content/PlaceholderERP.ts` | 程序生成的校准图。 |
 | 内容映射材质 | `src/materials/ERPMaskMaterial.ts` | shader 中完成内容采样、FOV 裁切、Mask、LED 像素化预览和参考眼位校正。 |
 | 场景装配 | `src/scene/SceneBuilder.ts` | 创建 three.js scene、内屏、非显示区、场馆和诊断层。 |
-| 相机预设 | `src/scene/CameraPresets.ts` | 中央、前排、后排、左右侧、后方仰视、外部剖面等视角。 |
+| 相机预设 | `src/scene/CameraPresets.ts` | 中央、前排、后排、左右侧、后方仰视等观众视角。 |
 | 诊断图层 | `src/diagnostics/DiagnosticsOverlay.ts` | 边界线、网格、球心、内容原点、当前眼位、射线示意等可视化。 |
 | GUI 面板 | `src/diagnostics/GUIPanel.ts` | lil-gui 控制面板、素材载入、参数滑杆、图层开关、分析和导出按钮。 |
-| 应用入口 | `src/main.ts` | 渲染循环、文件载入、参数同步、点击座位、拖拽内屏、导出和 HUD 更新。 |
+| 应用入口 | `src/main.ts` | 渲染循环、文件载入、参数同步、点击座位、座位观众模式、拖拽内屏、导出和 HUD 更新。 |
 
 ## 素材与清单
 
@@ -65,6 +65,7 @@ SphereLab 是一个纯前端球幕预演器：用 three.js 渲染参数化场馆
 - 左下角：相机机位切换。
 - 右下角：Pointer Inspector。
 - 状态面板：素材/清单报错、模式状态、已选座位、全场座位分析，只在有内容时显示。
+- 座位观众模式：点击座位后固定在该座位眼位，拖拽只改变朝向；切换预设机位或「自由环视」退出。
 
 ## 已知边界
 

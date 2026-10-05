@@ -80,6 +80,7 @@ const placeholderTexture = createPlaceholderERPTexture(2048);
 
 let bundle: SceneBundle = buildScene(cfg, placeholderTexture);
 let presets: CameraPreset[] = computeCameraPresets(cfg);
+let activeSeatLabel: string | null = null;
 
 // Content reference origin marker — kept outside bundle.diagnostics (which only rebuilds on venue
 // geometry changes) since its position instead tracks the loaded manifest's `originOffset`, see
@@ -754,8 +755,8 @@ function requestManifestFile() {
 const cameraBar = document.getElementById("camera-bar")!;
 let activePresetId: string | null = null;
 
-/** The outer shell remains visible as a reference from every camera position. It renders through
- * the media plane, while Exterior Cutaway additionally clips both layers to reveal their spacing. */
+/** The outer shell remains visible as a reference from every camera position. The cutaway hook
+ * remains available for any future view that requests it. */
 function syncCutawayState(cutaway: boolean) {
   const shell = bundle.venue.group.children.find((c) => (c as any).userData?.isBuildingShell) as THREE.Mesh | undefined;
   if (shell) {
@@ -769,7 +770,55 @@ function syncCutawayState(cutaway: boolean) {
   bundle.nonScreenMaterial.clippingPlanes = cutaway ? [bundle.cutawayPlane] : [];
 }
 
+let audienceView:
+  | {
+      eye: THREE.Vector3;
+      yaw: number;
+      pitch: number;
+      dragging: boolean;
+      lastX: number;
+      lastY: number;
+    }
+  | null = null;
+
+const AUDIENCE_LOOK_DISTANCE = 10;
+const AUDIENCE_LOOK_SENSITIVITY = 0.003;
+const AUDIENCE_MIN_PITCH = THREE.MathUtils.degToRad(-80);
+const AUDIENCE_MAX_PITCH = THREE.MathUtils.degToRad(80);
+
+function applyAudienceLook() {
+  if (!audienceView) return;
+  const cp = Math.cos(audienceView.pitch);
+  const forward = new THREE.Vector3(Math.sin(audienceView.yaw) * cp, Math.sin(audienceView.pitch), -Math.cos(audienceView.yaw) * cp);
+  camera.position.copy(audienceView.eye);
+  controls.target.copy(audienceView.eye.clone().add(forward.multiplyScalar(AUDIENCE_LOOK_DISTANCE)));
+  camera.lookAt(controls.target);
+  updateEyePositionMarkerPosition(audienceView.eye);
+}
+
+function enterAudienceView(eye: THREE.Vector3, target: THREE.Vector3) {
+  const forward = target.clone().sub(eye).normalize();
+  audienceView = {
+    eye: eye.clone(),
+    yaw: Math.atan2(forward.x, -forward.z),
+    pitch: Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1)),
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+  };
+  controls.enabled = false;
+  applyAudienceLook();
+}
+
+function exitAudienceView() {
+  if (!audienceView) return;
+  audienceView = null;
+  controls.enabled = true;
+}
+
 function applyPreset(preset: CameraPreset) {
+  exitAudienceView();
+  activeSeatLabel = null;
   camera.position.copy(preset.position);
   camera.fov = preset.fov;
   camera.updateProjectionMatrix();
@@ -794,18 +843,27 @@ function renderCameraBar() {
   }
   const freeBtn = document.createElement("button");
   freeBtn.textContent = "自由环视";
-  if (!activePresetId) freeBtn.classList.add("active");
+  if (!activePresetId && !activeSeatLabel) freeBtn.classList.add("active");
   freeBtn.addEventListener("click", () => {
+    exitAudienceView();
+    activeSeatLabel = null;
     activePresetId = null;
     renderCameraBar();
   });
   cameraBar.appendChild(freeBtn);
+  if (activeSeatLabel) {
+    const seatBtn = document.createElement("button");
+    seatBtn.textContent = activeSeatLabel;
+    seatBtn.classList.add("active");
+    seatBtn.title = "当前为座位观众模式：拖拽只会在该座位转头";
+    cameraBar.appendChild(seatBtn);
+  }
 }
 renderCameraBar();
 applyPreset(presets[0]);
 
 // ---------------------------------------------------------------------------
-// 点击座位查看视角：7 个相机机位之外，观众席里任意一块代表性座椅（VenueGeometry.ts 的
+// 点击座位查看视角：预设相机机位之外，观众席里任意一块代表性座椅（VenueGeometry.ts 的
 // seatInstancedMesh）都可以点击，相机立刻跳到那个座位的眼位，并在右侧面板给出与中央参考位相比
 // 的量化读数（视线朝向偏移、代表性视锥内的球幕覆盖率，见 core/SeatMetrics.ts）。
 // ---------------------------------------------------------------------------
@@ -841,11 +899,10 @@ function selectSeat(instanceId: number) {
   camera.position.copy(eye);
   camera.fov = 100;
   camera.updateProjectionMatrix();
-  controls.target.copy(seatTarget);
-  controls.update();
+  enterAudienceView(eye, seatTarget);
   syncCutawayState(false);
-  updateEyePositionMarkerPosition(eye);
-  activePresetId = null; // this is a seat, not one of the named presets — "自由环视" highlights
+  activePresetId = null; // this is a seat, not one of the named presets.
+  activeSeatLabel = `座位观众 ${meta.azDeg.toFixed(0)}° / ${meta.radius.toFixed(1)}m`;
   renderCameraBar();
 
   const forward = seatTarget.clone().sub(eye).normalize();
@@ -860,9 +917,50 @@ function selectSeat(instanceId: number) {
     <div class="row"><span>距球心距离</span><b>${distToCenter.toFixed(1)} m</b></div>
     <div class="row"><span>视锥球幕覆盖率</span><b>${(coverage.coverageFraction * 100).toFixed(0)}%</b></div>
     <div class="row"><span>与中央参考位视线偏移</span><b>${offsetDeg.toFixed(1)}°</b></div>
-    <div class="hint">几何近似：未建模座椅/结构遮挡物，覆盖率为该座位前方代表性视锥（110°×70°）的采样估计，不是渲染像素结果；样本量小，不代表全体观众满意度。</div>
+    <div class="hint">观众模式：拖拽画面会固定在该座位眼位转头，不再绕场景环视。几何近似：未建模座椅/结构遮挡物，覆盖率为该座位前方代表性视锥（110°×70°）的采样估计，不是渲染像素结果；样本量小，不代表全体观众满意度。</div>
   `;
 }
+
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (ev) => {
+    if (!audienceView || ev.button !== 0) return;
+    audienceView.dragging = true;
+    audienceView.lastX = ev.clientX;
+    audienceView.lastY = ev.clientY;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  },
+  { capture: true },
+);
+
+window.addEventListener(
+  "pointermove",
+  (ev) => {
+    if (!audienceView?.dragging) return;
+    const dx = ev.clientX - audienceView.lastX;
+    const dy = ev.clientY - audienceView.lastY;
+    audienceView.lastX = ev.clientX;
+    audienceView.lastY = ev.clientY;
+    audienceView.yaw -= dx * AUDIENCE_LOOK_SENSITIVITY;
+    audienceView.pitch = THREE.MathUtils.clamp(audienceView.pitch - dy * AUDIENCE_LOOK_SENSITIVITY, AUDIENCE_MIN_PITCH, AUDIENCE_MAX_PITCH);
+    applyAudienceLook();
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  },
+  { capture: true },
+);
+
+window.addEventListener(
+  "pointerup",
+  (ev) => {
+    if (!audienceView?.dragging) return;
+    audienceView.dragging = false;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  },
+  { capture: true },
+);
 
 renderer.domElement.addEventListener("pointerdown", (ev) => {
   if (ev.button !== 0) return; // left button only — right/middle drag OrbitControls' pan, not a pick

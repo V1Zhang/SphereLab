@@ -11,7 +11,7 @@
 | D-05 | 观众区范围 | P0 必须 | 前/后/左/右范围、座席碗高程、中央通道 | m + 模型/平面图 | 建立简化观众区和镜头位置 | — | — |
 | D-06 | 代表性观众视点 | P0 必须 | 中央、前排、后排、左右侧、后方仰视等坐标和朝向 | 坐标表 | 用于预设镜头和评审截图 | — | 建议至少 5 个视点 |
 | D-07 | 完整座位/眼位数据 | P1 建议 | 每个座位或每排中心线、眼高、朝向 | CSV/JSON/模型 | 评估不同位置的观看效果 | — | 概念阶段可暂不提供 |
-| D-08 | 建筑外壳模型 | P1 建议 | 外部球壳、入口、结构外形 | — | 支持外部剖面视角 | — | — |
+| D-08 | 建筑外壳模型 | P1 建议 | 外部球壳、入口、结构外形 | — | 支持外壳/结构参考 | — | — |
 | D-09 | 永久遮挡物模型 | P1 建议 | 梁柱、灯具、音响、机械设备及其高度 | 模型/设备布置图 | 识别实际视线遮挡 | — | — |
 | D-10 | 设计坐标系说明 | P0 必须 | 单位、原点、轴向、模型版本及转换规则 | 坐标说明 | 保证所有资料在系统中对齐 | — | — |
 
@@ -25,7 +25,7 @@
 | D-03 非显示区域清单 | `ScreenMask.ts` 的 mask 反向区域 | 由同一套 mask 隐含定义（非屏幕 = mask 之外），没有单独的非显示区域清单 |
 | D-04 舞台位置与尺寸 | `stage.width/depth/height/frontOffset` | 中心点 (0, 0.6, -18)，宽 32m × 深 12m × 高 1.2m |
 | D-05 观众区范围 | `audience.innerRadius/outerRadius/riseHeight` | 扇形 raked bowl，内径 5m ~ 外径 28m，另加简化中央通道 |
-| D-06 代表性观众视点 | `src/scene/CameraPresets.ts` | 已有 7 个近似机位：Central Audience / Front Row / Rear Row / Left Side / Right Side / Rear Look-Up / Exterior Cutaway，满足"至少 5 个视点"的建议；坐标仍是参数化近似，非真实座位表 |
+| D-06 代表性观众视点 | `src/scene/CameraPresets.ts` | 已有 6 个近似观众机位：Central Audience / Front Row / Rear Row / Left Side / Right Side / Rear Look-Up，满足"至少 5 个视点"的建议；坐标仍是参数化近似，非真实座位表 |
 | D-07 完整座位/眼位数据 | `src/core/VenueGeometry.ts` `seatMeta` / `audienceSeatPosition()` | 观众席点击拾取（`main.ts` `selectSeat`）+ 座位视角量化指标（`src/core/SeatMetrics.ts`：视锥球幕覆盖率、与中央参考位的视线偏移）已实现，但座位坐标仍是 `VenueConfig` 参数化的代表性方位角/半径网格，不是真实座位表；也不建模遮挡物（对应 D-09）。真实数据到位后只需替换喂给这套拾取/量化逻辑的坐标来源，公式本身不用改 |
 | D-08 建筑外壳模型 | `building.shellRadius` | 半径 60m 的同心参考球壳（比 Media Plane 大 8m，仅用于表现结构间距，非真实外壳形状） |
 | D-09 永久遮挡物模型 | `src/core/VenueGeometry.ts` `occluderMeshes` | 梁柱/灯具/音响/机械设备仍未建模；但视线示意图（`main.ts` `checkOcclusion`）已经对已有的场馆几何——舞台平台、座椅方块、后方控制区盒子——做真实遮挡判定，不是"永久遮挡物"，是"顺带能查的现有几何" |

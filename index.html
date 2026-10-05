@@ -117,8 +117,10 @@
         border-radius: 10px;
         padding: 8px;
         backdrop-filter: blur(6px);
-        flex-wrap: wrap;
-        max-width: min(560px, calc(100vw - 28px));
+        flex-wrap: nowrap;
+        max-width: calc(100vw - 28px);
+        overflow-x: auto;
+        scrollbar-width: thin;
       }
       #camera-bar button {
         background: transparent;

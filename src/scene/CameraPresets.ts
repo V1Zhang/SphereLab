@@ -4,10 +4,8 @@ import { audienceSeatPosition } from "../core/VenueGeometry";
 import { yawPitchToDirection } from "../utils/SphericalMath";
 
 /**
- * Standard audience/exterior viewpoints, treated as the V1 acceptance cases the brief asks for.
- * Covers the "at least 5 representative viewpoints" recommendation in
- * docs/HANDOFF_CHECKLIST.md D-06 (Central / Front Row / Rear Row / Left+Right Side / Rear
- * Look-Up), plus Exterior Cutaway for the structure-vs-media-plane-vs-seating overview.
+ * Standard audience viewpoints, treated as the V1 acceptance cases the brief asks for. Covers the
+ * "at least 5 representative viewpoints" recommendation in docs/HANDOFF_CHECKLIST.md D-06.
  */
 
 export interface CameraPreset {
@@ -60,10 +58,6 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
   const mediaCenter = new THREE.Vector3(cfg.mediaPlane.centerOffsetX, centerHeight, cfg.mediaPlane.centerOffsetZ);
   const rearTarget = yawPitchToDirection(180, 55).multiplyScalar(mediaRadius).add(mediaCenter);
 
-  const shellR = cfg.building.shellRadius;
-  const exteriorPos = new THREE.Vector3(shellR * 1.5, shellR * 1.0, shellR * 1.7);
-  const exteriorTarget = mediaCenter.clone();
-
   return [
     {
       id: "central",
@@ -112,14 +106,6 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
       target: rearTarget,
       fov: 100,
       cutaway: false,
-    },
-    {
-      id: "exterior-cutaway",
-      label: "外部剖面",
-      position: exteriorPos,
-      target: exteriorTarget,
-      fov: 50,
-      cutaway: true,
     },
   ];
 }

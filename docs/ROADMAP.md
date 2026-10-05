@@ -10,12 +10,11 @@ V1 — Concept Previsualization（当前阶段，已完成）
 ├─ 占位 ERP 校准内容                        ✅
 ├─ 视频 / 图片文件上传（拖入即播）           ✅
 ├─ Stage + Audience + Venue geometry        ✅
-├─ Audience Camera Presets（7 个标准机位，满足 D-06 建议）✅
-├─ Exterior Cutaway                         ✅
+├─ Audience Camera Presets（6 个观众机位，满足 D-06 建议）✅
 ├─ Geometry Diagnostics                     ✅
 ├─ 素材载入（视频 / 图片 / EXR / HDR，拖入即播） ✅
-├─ 素材清单（Manifest）：equirectangular（全景）+ perspective（虚拟相机透视）双投影，自定义 FOV / 朝向 / 镜像 / 色彩解释 / 参考原点·相机位置 ✅
-├─ 点击座位拾取 + 座位视角量化指标（覆盖率 / 视线偏移，几何近似）✅
+├─ 素材清单（Manifest）：多投影格式 + 自定义 FOV / 朝向 / 镜像 / 色彩解释 / 参考原点·相机位置 ✅
+├─ 点击座位拾取 + 座位观众模式 + 座位视角量化指标（覆盖率 / 视线偏移，几何近似）✅
 ├─ 批量座位分析（全场分布统计）+ 导出（座位分析 CSV / 配置 JSON / 视角截图 PNG，纯前端）✅
 ├─ 视线示意图（eq.7 可视化：射线 + 采样方向 + 遮挡判定）+ 当前眼位标记 ✅
 └─ 内屏（Media Plane）/ 外屏（Building Shell）解耦：外屏 + 观众席保持仅参数化调整，内屏中心可 3D 拖拽（半径改用滑杆），配套摆放合理性约束（C-01~C-09，见 [`SCREEN_DECOUPLING_DESIGN.md`](./SCREEN_DECOUPLING_DESIGN.md)） ✅
@@ -48,7 +47,7 @@ SphereLab 的核心是「球幕适配 → 数字预演 → 视觉校正」，具
 - 多观众视角模拟
 - 几何诊断
 - 载入多种投影/预变形格式的素材（视频 / 图片 / EXR / HDR）+ 清单驱动的自定义参数（FOV、朝向、镜像、色彩解释、参考原点/相机位置），贴到球幕预览：**equirectangular**、**perspective**、**fisheyeEquidistant**、**fisheyeEquisolid**、**domemaster**、**cylindrical**，见 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「多种采样」一节。
-- 点击观众席任意代表性座位，跳转到该座位视角，并给出基础量化读数（视锥球幕覆盖率、与中央参考位的视线朝向偏移，见 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「每个座位的视角」一节）。
+- 点击观众席任意代表性座位，跳转到该座位视角；拖拽时固定该座位眼位转头，并给出基础量化读数（视锥球幕覆盖率、与中央参考位的视线朝向偏移）。
 - 批量跑全场代表性座位的分析（分布统计：均值/P95/极值，不产出单一平均分），并导出座位分析 CSV、当前配置 JSON、当前视角 PNG 截图——全部纯前端下载，无后端（见 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「批量座位分析 + 导出」一节）。
 - 视线示意图：鼠标悬停实时画出 e→p 射线（对已建模的舞台/座椅/后方控制区做遮挡判定）与 o→p 采样方向，可视化项目说明式 (7) 的几何关系（见 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「视线示意图」一节）。
 
@@ -68,4 +67,4 @@ V1 用 `VenueConfig`（`src/core/VenueConfig.ts`）里的少量参数近似场�
 1. `MediaPlaneGeometry.ts` 的完整 UV 球 → 替换/叠加真实屏幕 Mesh（来自 LED 供应商的 3D 模型）。
 2. `ScreenMask.ts` 的 3 控制点 cosine 插值 → 替换为真实 Screen Mask（来自场馆设计方的实际显示边界，可能需要从每 yaw 一个值升级为 2D 遮罩纹理）。
 3. `VenueGeometry.ts` 的参数化舞台/观众席 → 替换为真实座位表 / 眼位数据。
-4. `CameraPresets.ts` 已有 Central / Front Row / Rear Row / Left / Right Side / Rear Look-Up 7 个近似机位 —— V2 要做的不是新增视角类型，而是把这些机位的坐标从参数化近似换成 D-07 真实座位/眼位数据，用于比较不同座位的主体大小、畸变程度、安全区。
+4. `CameraPresets.ts` 已有 Central / Front Row / Rear Row / Left / Right Side / Rear Look-Up 6 个近似观众机位 —— V2 要做的不是新增视角类型，而是把这些机位的坐标从参数化近似换成 D-07 真实座位/眼位数据，用于比较不同座位的主体大小、畸变程度、安全区。
