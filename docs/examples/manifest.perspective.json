@@ -1,0 +1,11 @@
+{
+  "projection": "perspective",
+  "hFovDeg": 90,
+  "vFovDeg": 60,
+  "yawOffsetDeg": 0,
+  "pitchOffsetDeg": 0,
+  "hFlip": false,
+  "vFlip": false,
+  "colorSpace": "srgb",
+  "originOffset": { "x": 0, "y": 0, "z": 0 }
+}

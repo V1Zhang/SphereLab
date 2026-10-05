@@ -1,0 +1,11 @@
+{
+  "projection": "fisheyeEquidistant",
+  "hFovDeg": 180,
+  "vFovDeg": 180,
+  "yawOffsetDeg": 0,
+  "pitchOffsetDeg": 0,
+  "hFlip": false,
+  "vFlip": false,
+  "colorSpace": "srgb",
+  "originOffset": { "x": 0, "y": 0, "z": 0 }
+}

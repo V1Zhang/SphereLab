@@ -1,0 +1,22 @@
+{
+  "name": "spherelab",
+  "private": true,
+  "version": "0.1.0",
+  "description": "SphereLab — 球幕内容虚拟预演与视觉适配系统",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "three": "^0.160.1",
+    "lil-gui": "^0.19.2"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

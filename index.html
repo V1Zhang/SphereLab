@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SphereLab — 球幕内容虚拟预演与视觉适配系统</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0c10;
+        --panel: rgba(18, 21, 28, 0.82);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: #e6e9ef;
+        --muted: #8a93a3;
+        --accent: #4fd1c5;
+        --warn: #ff6b6b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .hud {
+        position: fixed;
+        pointer-events: none;
+        z-index: 10;
+      }
+      .hud * {
+        pointer-events: auto;
+      }
+
+      #top-left-stack {
+        top: 14px;
+        left: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 360px;
+        max-height: calc(100vh - 88px);
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+      #title-bar {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        backdrop-filter: blur(6px);
+      }
+      #title-bar .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      #title-bar h1 {
+        font-size: 14px;
+        margin: 0;
+        letter-spacing: 0.02em;
+      }
+      #title-bar p {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 6px 0 0;
+        line-height: 1.4;
+      }
+      #info-toggle,
+      #status-toggle {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1;
+        padding: 4px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      #info-toggle:hover,
+      #status-toggle:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+      }
+      /* Collapsed (default): only the "SphereLab" title row shows; the description and live stats
+         stay one click away instead of covering the viewport on load. */
+      #top-left-stack.collapsed #title-bar p,
+      #top-left-stack.collapsed #stats-bar {
+        display: none;
+      }
+
+      #camera-bar {
+        bottom: 14px;
+        left: 14px;
+        display: flex;
+        gap: 6px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px;
+        backdrop-filter: blur(6px);
+        flex-wrap: wrap;
+        max-width: min(560px, calc(100vw - 28px));
+      }
+      #camera-bar button {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-size: 11px;
+        padding: 7px 10px;
+        border-radius: 7px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+        white-space: nowrap;
+      }
+      #camera-bar button:hover {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      #camera-bar button.active {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(79, 209, 197, 0.1);
+      }
+
+      #inspector {
+        bottom: 14px;
+        right: 14px;
+        min-width: 220px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        backdrop-filter: blur(6px);
+        font-size: 11px;
+        line-height: 1.7;
+        font-variant-numeric: tabular-nums;
+      }
+      #inspector h2 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 0 0 6px;
+      }
+      #inspector .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      #inspector .row span:first-child {
+        color: var(--muted);
+      }
+      #inspector .miss {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      #stats-bar:empty {
+        display: none;
+      }
+      #stats-bar {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+        backdrop-filter: blur(6px);
+        font-size: 11px;
+        color: var(--muted);
+        text-align: left;
+        line-height: 1.6;
+      }
+      #stats-bar b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      #status-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #status-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+        backdrop-filter: blur(6px);
+      }
+      #status-header h2 {
+        font-size: 11px;
+        margin: 0;
+        color: var(--text);
+        font-weight: 600;
+      }
+      #status-panels {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #status-stack.collapsed #status-panels {
+        display: none;
+      }
+      #content-status:empty,
+      #mode-status:empty,
+      #seat-info:empty,
+      #analysis-info:empty {
+        display: none;
+      }
+      #content-status,
+      #mode-status,
+      #seat-info,
+      #analysis-info {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+        backdrop-filter: blur(6px);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+      #content-status b,
+      #mode-status b,
+      #seat-info b,
+      #analysis-info b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      #content-status .err {
+        color: var(--warn);
+      }
+      #mode-status {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      #mode-status b {
+        white-space: nowrap;
+      }
+      #mode-status span {
+        color: var(--muted);
+        text-align: right;
+      }
+      #mode-status.edit {
+        border-color: rgba(79, 209, 197, 0.45);
+      }
+      #mode-status.preview {
+        border-color: rgba(255, 184, 77, 0.5);
+      }
+      #mode-status.preview b {
+        color: #ffb84d;
+      }
+      #seat-info h2,
+      #analysis-info h2 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 0 0 6px;
+      }
+      #seat-info .row,
+      #analysis-info .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+      }
+      #seat-info .row span:first-child,
+      #analysis-info .row span:first-child {
+        color: var(--muted);
+      }
+      #seat-info .hint,
+      #analysis-info .hint {
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.4;
+        font-style: italic;
+        margin-top: 6px;
+      }
+      #analysis-info table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+      }
+      #analysis-info table td {
+        padding: 1px 0;
+      }
+      #analysis-info table td:first-child {
+        color: var(--muted);
+      }
+      #analysis-info table td:not(:first-child) {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg);
+        color: var(--muted);
+        font-size: 13px;
+        z-index: 100;
+        transition: opacity 0.3s ease;
+      }
+
+      .lil-gui {
+        --width: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading">SphereLab 初始化中…</div>
+
+    <div id="app"></div>
+
+    <div class="hud collapsed" id="top-left-stack">
+      <div id="title-bar">
+        <div class="row">
+          <h1>SphereLab</h1>
+          <button id="info-toggle" type="button" aria-expanded="false">展开 ▾</button>
+        </div>
+        <p>球幕内容虚拟预演与视觉适配系统<br />载入素材与清单，预览球幕映射、Mask、座位视角与几何诊断<br />点击观众席任意座位可预览该座位视角</p>
+      </div>
+      <div id="stats-bar"></div>
+
+      <div id="status-stack">
+        <div id="status-header">
+          <h2>状态信息</h2>
+          <button id="status-toggle" type="button" aria-expanded="true">收起 ▴</button>
+        </div>
+        <div id="status-panels">
+          <div id="mode-status"></div>
+          <div id="content-status"></div>
+          <div id="seat-info"></div>
+          <div id="analysis-info"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud" id="camera-bar"></div>
+
+    <div class="hud" id="inspector">
+      <h2>指针拾取信息</h2>
+      <div id="inspector-body" class="miss">移动鼠标到球幕上查看 yaw / pitch / ERP UV</div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

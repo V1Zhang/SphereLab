@@ -1,0 +1,11 @@
+{
+  "projection": "equirectangular",
+  "hFovDeg": 220,
+  "vFovDeg": 130,
+  "yawOffsetDeg": 15,
+  "pitchOffsetDeg": -5,
+  "hFlip": false,
+  "vFlip": false,
+  "colorSpace": "srgb",
+  "originOffset": { "x": 0, "y": 0.4, "z": -0.8 }
+}

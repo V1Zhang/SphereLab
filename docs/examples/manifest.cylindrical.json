@@ -1,0 +1,11 @@
+{
+  "projection": "cylindrical",
+  "hFovDeg": 220,
+  "vFovDeg": 100,
+  "yawOffsetDeg": 0,
+  "pitchOffsetDeg": 0,
+  "hFlip": false,
+  "vFlip": false,
+  "colorSpace": "srgb",
+  "originOffset": { "x": 0, "y": 0, "z": 0 }
+}
