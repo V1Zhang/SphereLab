@@ -1,0 +1,54 @@
+{
+  "name": "spherelab-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SphereLab desktop wrapper",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-app": "node scripts/prepare-app.mjs",
+    "start": "electron .",
+    "pack": "pnpm run prepare-app && electron-builder --dir",
+    "build": "pnpm run prepare-app && electron-builder"
+  },
+  "build": {
+    "appId": "com.spherelab.desktop",
+    "productName": "SphereLab",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "app-dist",
+        "to": "app-dist"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Graphics"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  }
+}
