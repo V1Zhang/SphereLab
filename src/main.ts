@@ -656,8 +656,7 @@ function loadHdrFile(file: File) {
   );
 }
 
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files?.[0];
+function handleMediaFile(file: File) {
   if (!file) return;
   const name = file.name.toLowerCase();
   const isVideoByExtension = [".mov", ".m4v", ".mp4", ".webm"].some((ext) => name.endsWith(ext));
@@ -666,7 +665,28 @@ fileInput.addEventListener("change", () => {
   else if (file.type.startsWith("video/") || isVideoByExtension) loadVideoFile(file);
   else if (file.type.startsWith("image/")) loadImageFile(file);
   else contentStatusEl.innerHTML = `<span class="err">无法识别的文件类型：${file.name}</span>`;
+}
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0];
+  if (!file) return;
+  handleMediaFile(file);
   fileInput.value = "";
+});
+
+// Allow files to be dragged from the Linux file manager directly onto the Electron window.
+// Preventing the browser's default drop navigation is important here: without it, dropping an
+// MP4 would navigate the app away from the packaged index.html instead of passing the File to the
+// same loader used by the file picker.
+window.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+});
+
+window.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (file) handleMediaFile(file);
 });
 
 function requestFile() {
