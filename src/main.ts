@@ -837,18 +837,19 @@ function exitAudienceView() {
 }
 
 function applyPreset(preset: CameraPreset) {
-  exitAudienceView();
   activeSeatLabel = null;
   camera.position.copy(preset.position);
   camera.fov = preset.fov;
   camera.updateProjectionMatrix();
-  controls.target.copy(preset.target);
-  controls.update();
 
   syncCutawayState(preset.cutaway);
   updateEyePositionMarkerPosition(preset.position);
 
   activePresetId = preset.id;
+  // Every named viewpoint is an observer position: keep the camera eye fixed at that
+  // representative seat and let the shared audience-drag handler change only yaw/pitch.
+  // "自由环视" is the only mode that re-enables OrbitControls for global scene movement.
+  enterAudienceView(preset.position, preset.target);
   renderCameraBar();
 }
 
