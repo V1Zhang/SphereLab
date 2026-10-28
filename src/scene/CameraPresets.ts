@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { VenueConfig } from "../core/VenueConfig";
 import { audienceSeatPosition } from "../core/VenueGeometry";
-import { yawPitchToDirection } from "../utils/SphericalMath";
 
 /**
  * Standard audience viewpoints, treated as the V1 acceptance cases the brief asks for. Covers the
@@ -19,7 +18,6 @@ export interface CameraPreset {
 }
 
 export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
-  const centerHeight = cfg.mediaPlane.centerHeight;
   const mediaRadius = cfg.mediaPlane.radius;
   const stageCenterZ = -(cfg.stage.frontOffset + cfg.stage.depth / 2);
 
@@ -48,15 +46,6 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
   const rightSeat = audienceSeatPosition(45, sideRadius, cfg.audience);
   const rightEye = rightSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const sideTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ);
-
-  const rearSeat = audienceSeatPosition(0, cfg.audience.outerRadius, cfg.audience);
-  const rearEye = rearSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
-  // Aim well inside the rear mask region (yaw 180, pitch 55°) rather than at an arbitrary offset —
-  // the old (centerHeight + 0.45R, eye.z + 0.6R) point landed almost exactly ON the rear boundary
-  // (minPitchForYaw(180) ≈ 22°), so the preset showed mostly empty background instead of the
-  // wrap-around screen it's supposed to demonstrate.
-  const mediaCenter = new THREE.Vector3(cfg.mediaPlane.centerOffsetX, centerHeight, cfg.mediaPlane.centerOffsetZ);
-  const rearTarget = yawPitchToDirection(180, 55).multiplyScalar(mediaRadius).add(mediaCenter);
 
   return [
     {
@@ -97,14 +86,6 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
       position: rightEye,
       target: sideTarget,
       fov: 90,
-      cutaway: false,
-    },
-    {
-      id: "rear-look-up",
-      label: "后方仰视",
-      position: rearEye,
-      target: rearTarget,
-      fov: 100,
       cutaway: false,
     },
   ];

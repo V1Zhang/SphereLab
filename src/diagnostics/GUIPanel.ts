@@ -159,14 +159,27 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   const contentControllers: Controller[] = [
     manifest.add(p, "contentHFovDeg", 1, 360, 1).name("水平视场 FOV（°）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentVFovDeg", 1, 180, 1).name("垂直视场 FOV（°）").onChange(deps.onContentParamsChange),
-    manifest.add(p, "contentYawOffsetDeg", -180, 180, 1).name("Yaw 朝向 / 偏移（°）").onChange(deps.onContentParamsChange),
-    manifest.add(p, "contentPitchOffsetDeg", -90, 90, 1).name("Pitch 朝向 / 偏移（°）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentHFlip").name("水平镜像翻转").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentVFlip").name("垂直镜像翻转（上下颠倒）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentColorSpace", ["srgb", "linear"]).name("色彩解释").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentOriginX", -10, 10, 0.1).name("参考原点 / 相机位置 X（m）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentOriginY", -10, 10, 0.1).name("参考原点 / 相机位置 Y（m）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentOriginZ", -10, 10, 0.1).name("参考原点 / 相机位置 Z（m）").onChange(deps.onContentParamsChange),
+  ];
+
+  // Keep the two most common framing controls in their own open folder so operators can move the
+  // projected video without hunting through the manifest/technical settings. These are angular
+  // content offsets, not physical movement of the dome or the audience camera.
+  const contentOffset = gui.addFolder("画面角度偏移").open();
+  const contentOffsetControllers: Controller[] = [
+    contentOffset
+      .add(p, "contentYawOffsetDeg", -180, 180, 1)
+      .name("水平偏移 Horizon / Yaw（°）")
+      .onChange(deps.onContentParamsChange),
+    contentOffset
+      .add(p, "contentPitchOffsetDeg", -90, 90, 1)
+      .name("垂直偏移 Vertical / Pitch（°）")
+      .onChange(deps.onContentParamsChange),
   ];
 
   // LED 像素化预览（诊断）：验证"每个采样格实际会显示什么颜色"是否合理，而不是看连续贴图永远看不出
@@ -285,6 +298,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
 
   const refreshContentControllers = () => {
     for (const c of contentControllers) c.updateDisplay();
+    for (const c of contentOffsetControllers) c.updateDisplay();
   };
   return { gui, refreshContentControllers };
 }

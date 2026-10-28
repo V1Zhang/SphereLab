@@ -30,6 +30,12 @@ pnpm run typecheck
 - 「恢复占位校准图」回到程序生成的校准内容，并重置素材参数。
 - 「播放 / 暂停视频」控制当前视频贴图。
 
+右上角面板「画面角度偏移」：
+
+- 「水平偏移 Horizon / Yaw」范围为 `-180°～180°`，用于左右移动放映画面。
+- 「垂直偏移 Vertical / Pitch」范围为 `-90°～90°`，用于上下移动放映画面。
+- 这两个参数只移动素材采样方向，不会移动球幕几何、观众席或相机眼位。
+
 右上角面板「素材参数（清单）」：
 
 - `projection` 支持 `equirectangular`、`perspective`、`fisheyeEquidistant`、`fisheyeEquisolid`、`domemaster`、`cylindrical`。

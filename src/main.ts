@@ -81,6 +81,9 @@ const placeholderTexture = createPlaceholderERPTexture(2048);
 let bundle: SceneBundle = buildScene(cfg, placeholderTexture);
 let presets: CameraPreset[] = computeCameraPresets(cfg);
 let activeSeatLabel: string | null = null;
+// Audience position labels are intentionally shown only in free-orbit + edit mode. Named
+// viewpoints and preview mode are kept visually clean for presentation/testing.
+let isFreeOrbit = false;
 
 // Content reference origin marker — kept outside bundle.diagnostics (which only rebuilds on venue
 // geometry changes) since its position instead tracks the loaded manifest's `originOffset`, see
@@ -152,7 +155,7 @@ const params: GUIParams = {
   showEyePosition: false,
   showRayDiagram: false,
   showStageArrow: false,
-  showAudienceMarkers: false,
+  showAudienceMarkers: true,
   showVenue: true,
   // LED 像素化预览：默认关闭（第一眼仍是现有的连续贴图），密度默认给一个肉眼可见马赛克块的值——
   // 见 diagnostics/GUIPanel.ts GUIParams 注释与 materials/ERPMaskMaterial.ts 的 setLedPixelate。
@@ -182,7 +185,7 @@ function applyVisibilityFromParams() {
   // layer is switched off; when switched on, it reappears on the next hover over the media plane.
   if (!params.showRayDiagram) rayDiagram.group.visible = false;
   bundle.diagnostics.stageDirectionArrow.visible = params.showStageArrow;
-  bundle.diagnostics.audienceMarkers.visible = params.showAudienceMarkers;
+  bundle.diagnostics.audienceMarkers.visible = params.showAudienceMarkers && isFreeOrbit && params.placementMode === "edit";
   bundle.venue.group.visible = params.showVenue;
 }
 applyVisibilityFromParams();
@@ -837,6 +840,8 @@ function exitAudienceView() {
 }
 
 function applyPreset(preset: CameraPreset) {
+  isFreeOrbit = false;
+  applyVisibilityFromParams();
   activeSeatLabel = null;
   camera.position.copy(preset.position);
   camera.fov = preset.fov;
@@ -850,6 +855,22 @@ function applyPreset(preset: CameraPreset) {
   // representative seat and let the shared audience-drag handler change only yaw/pitch.
   // "自由环视" is the only mode that re-enables OrbitControls for global scene movement.
   enterAudienceView(preset.position, preset.target);
+  renderCameraBar();
+}
+
+function startFreeOrbitAt(preset: CameraPreset) {
+  exitAudienceView();
+  activeSeatLabel = null;
+  activePresetId = null;
+  isFreeOrbit = true;
+  camera.position.copy(preset.position);
+  camera.fov = preset.fov;
+  camera.updateProjectionMatrix();
+  controls.target.copy(preset.target);
+  controls.update();
+  syncCutawayState(preset.cutaway);
+  updateEyePositionMarkerPosition(preset.position);
+  applyVisibilityFromParams();
   renderCameraBar();
 }
 
@@ -869,6 +890,8 @@ function renderCameraBar() {
     exitAudienceView();
     activeSeatLabel = null;
     activePresetId = null;
+    isFreeOrbit = true;
+    applyVisibilityFromParams();
     renderCameraBar();
   });
   cameraBar.appendChild(freeBtn);
@@ -881,7 +904,7 @@ function renderCameraBar() {
   }
 }
 renderCameraBar();
-applyPreset(presets[0]);
+startFreeOrbitAt(presets.find((preset) => preset.id === "rear-row") ?? presets[0]);
 
 // ---------------------------------------------------------------------------
 // 点击座位查看视角：预设相机机位之外，观众席里任意一块代表性座椅（VenueGeometry.ts 的
@@ -913,6 +936,8 @@ function selectSeat(instanceId: number) {
   const meta = bundle.venue.seatMeta[instanceId];
   if (!meta) return;
 
+  isFreeOrbit = false;
+  applyVisibilityFromParams();
   const seatFloorPos = audienceSeatPosition(meta.azDeg, meta.radius, cfg.audience);
   const eye = seatFloorPos.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const { domeCenter, seatTarget, referencePoint, centralEye } = getSeatReferenceFrame();
@@ -1084,6 +1109,7 @@ function onPlacementModeChange() {
   const editing = params.placementMode === "edit";
   centerHandle.visible = editing;
   tiltHandle.visible = editing;
+  bundle.diagnostics.audienceMarkers.visible = params.showAudienceMarkers && isFreeOrbit && editing;
   updateModeStatus();
   applyMediaSolidLook();
 }

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { VenueConfig } from "../core/VenueConfig";
+import { audienceSeatPosition } from "../core/VenueGeometry";
 import { sampleBoundaryCurve } from "../core/ScreenMask";
 import { yawPitchToDirection } from "../utils/SphericalMath";
 
@@ -241,19 +242,32 @@ function buildAudienceMarkers(cfg: VenueConfig): THREE.Object3D {
   const group = new THREE.Group();
   const midRadius = (cfg.audience.innerRadius + cfg.audience.outerRadius) / 2;
 
-  const front = makeTextSprite("观众前方 · yaw 0°", "#4fd1c5");
-  front.position.set(0, 3, cfg.audience.innerRadius * 0.6);
-  group.add(front);
+  // These labels sit on the same representative positions used by CameraPresets.ts, so the
+  // visual annotation and the camera buttons always refer to the same four locations.
+  const representativePositions = [
+    { label: "前排代表位置", azDeg: 0, radius: cfg.audience.innerRadius, color: "#4fd1c5" },
+    { label: "后排代表位置", azDeg: 0, radius: cfg.audience.outerRadius, color: "#ffb454" },
+    { label: "左侧代表位置", azDeg: -45, radius: midRadius, color: "#8ab4ff" },
+    { label: "右侧代表位置", azDeg: 45, radius: midRadius, color: "#c58aff" },
+  ];
+  for (const marker of representativePositions) {
+    const position = audienceSeatPosition(marker.azDeg, marker.radius, cfg.audience);
+    const point = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 16, 12),
+      new THREE.MeshBasicMaterial({ color: marker.color }),
+    );
+    point.position.copy(position).add(new THREE.Vector3(0, 0.55, 0));
+    group.add(point);
 
-  const rear = makeTextSprite("观众后方 · yaw 180°", "#ffb454");
-  rear.position.set(0, cfg.mediaPlane.centerHeight * 0.3 + 4, cfg.audience.outerRadius + 3);
-  group.add(rear);
+    const label = makeTextSprite(marker.label, marker.color);
+    label.position.copy(position).add(new THREE.Vector3(0, 2.3, 0));
+    group.add(label);
+  }
 
   const stage = makeTextSprite("舞台", "#ff6b6b");
   stage.position.set(0, cfg.stage.height + 3, -(cfg.stage.frontOffset + cfg.stage.depth / 2));
   group.add(stage);
 
-  void midRadius;
   return group;
 }
 
