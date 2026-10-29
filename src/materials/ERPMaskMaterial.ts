@@ -307,7 +307,16 @@ void main() {
       cYawDeg = mod(cYawDeg + 180.0, 360.0) - 180.0; // fold into (-180, 180] after the offset
       u = 0.5 + cYawDeg / uHFovDeg;
       v = 0.5 - cPitchDeg / uVFovDeg;
-      inBounds = true;
+      // ERP vertical offset is a content remap, not a spherical pitch rotation.  Keep the
+      // source's top/bottom semantics intact (sky stays sky, ground stays ground) and extend
+      // the nearest edge when the requested shift reaches beyond the finite image.  A spherical
+      // rotation would make the poles wrap through one another and can put ground above sky.
+      if (uProjection == 0) {
+        v = clamp(v, 0.0, 1.0);
+        inBounds = true;
+      } else {
+        inBounds = true;
+      }
     }
 
     if (uHFlip) u = 1.0 - u;

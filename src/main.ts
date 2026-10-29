@@ -1293,6 +1293,123 @@ function exportConfigJSON() {
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `spherelab-config-${timestampForFilename()}.json`);
 }
 
+/** Returns the source dimensions for image/video/DataTexture-backed media. */
+function currentContentDimensions(): { width: number; height: number } | null {
+  const image = currentTexture.image as unknown as {
+    width?: number;
+    height?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+  } | undefined;
+  if (!image) return null;
+  const width = image.videoWidth || image.width || 0;
+  const height = image.videoHeight || image.height || 0;
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * Exports the loaded ERP after applying the same content remap used by the dome shader.
+ * This intentionally exports a flat ERP PNG, not a perspective screenshot: output pixels are
+ * mapped from output ERP UVs back into the source texture, with horizontal wrap and vertical
+ * edge extension matching ERPMaskMaterial's equirectangular branch.
+ */
+function exportAdjustedERP() {
+  if (params.contentProjection !== "equirectangular") {
+    contentStatusEl.innerHTML = `<span class="err">调整后 ERP 导出只支持 equirectangular 投影，请先切换投影类型。</span>`;
+    return;
+  }
+  const dimensions = currentContentDimensions();
+  if (!dimensions) {
+    contentStatusEl.innerHTML = `<span class="err">当前素材还没有可导出的图像尺寸。</span>`;
+    return;
+  }
+
+  const outputTexture = currentTexture.clone();
+  outputTexture.wrapS = THREE.RepeatWrapping;
+  outputTexture.wrapT = THREE.ClampToEdgeWrapping;
+  outputTexture.minFilter = THREE.LinearFilter;
+  outputTexture.magFilter = THREE.LinearFilter;
+  outputTexture.needsUpdate = true;
+
+  const exportScene = new THREE.Scene();
+  const exportCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const exportMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: outputTexture },
+      yawOffsetDeg: { value: params.contentYawOffsetDeg },
+      pitchOffsetDeg: { value: params.contentPitchOffsetDeg },
+      hFlip: { value: params.contentHFlip },
+      vFlip: { value: params.contentVFlip },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vOutputUv;
+      void main() {
+        vOutputUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform sampler2D map;
+      uniform float yawOffsetDeg;
+      uniform float pitchOffsetDeg;
+      uniform bool hFlip;
+      uniform bool vFlip;
+      varying vec2 vOutputUv;
+      void main() {
+        // Output ERP -> source ERP. Horizontal movement wraps around; vertical movement keeps
+        // top/bottom semantics and extends the nearest edge instead of wrapping poles.
+        float u = fract(vOutputUv.x - yawOffsetDeg / 360.0);
+        float v = clamp(vOutputUv.y + pitchOffsetDeg / 180.0, 0.0, 1.0);
+        if (hFlip) u = 1.0 - u;
+        if (vFlip) v = 1.0 - v;
+        gl_FragColor = texture2D(map, vec2(u, v));
+      }
+    `,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), exportMaterial);
+  exportScene.add(quad);
+
+  const target = new THREE.WebGLRenderTarget(dimensions.width, dimensions.height, {
+    depthBuffer: false,
+    stencilBuffer: false,
+  });
+  const pixels = new Uint8Array(dimensions.width * dimensions.height * 4);
+  const previousTarget = renderer.getRenderTarget();
+  renderer.setRenderTarget(target);
+  renderer.render(exportScene, exportCamera);
+  renderer.readRenderTargetPixels(target, 0, 0, dimensions.width, dimensions.height, pixels);
+  renderer.setRenderTarget(previousTarget);
+
+  // WebGL readback is bottom-to-top; Canvas/ImageData is top-to-bottom.
+  const imageData = new ImageData(dimensions.width, dimensions.height);
+  const rowBytes = dimensions.width * 4;
+  for (let y = 0; y < dimensions.height; y += 1) {
+    const sourceStart = (dimensions.height - 1 - y) * rowBytes;
+    imageData.data.set(pixels.subarray(sourceStart, sourceStart + rowBytes), y * rowBytes);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
+  canvas.getContext("2d")!.putImageData(imageData, 0, 0);
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      contentStatusEl.innerHTML = `<span class="err">ERP 导出失败：浏览器没能生成 PNG。</span>`;
+      return;
+    }
+    downloadBlob(blob, `spherelab-adjusted-erp-${timestampForFilename()}.png`);
+    contentStatusEl.innerHTML = `已导出调整后 ERP：<b>${dimensions.width}×${dimensions.height} PNG</b>`;
+  }, "image/png");
+
+  target.dispose();
+  exportMaterial.dispose();
+  quad.geometry.dispose();
+  outputTexture.dispose();
+}
+
 function exportScreenshotPNG() {
   // Force one more render right before capture — animate()'s rAF loop keeps the buffer current,
   // but a render triggered synchronously from this click handler guarantees the frame in the
@@ -1331,6 +1448,7 @@ const guiHandle = createGUIPanel({
   onRunBatchAnalysis: runBatchAnalysis,
   onExportSeatCSV: exportSeatCSV,
   onExportConfigJSON: exportConfigJSON,
+  onExportAdjustedERP: exportAdjustedERP,
   onExportScreenshot: exportScreenshotPNG,
 });
 
@@ -1445,8 +1563,19 @@ function computeContentUV(localPos: THREE.Vector3): { u: number; v: number; inBo
   const cPitchDeg = pitchDeg - params.contentPitchOffsetDeg;
   let u = 0.5 + cYawDeg / params.contentHFovDeg;
   let v = 0.5 - cPitchDeg / params.contentVFovDeg;
+  // Match ERPMaskMaterial: ERP vertical offset is a bounded content remap with edge extension,
+  // not a spherical pitch rotation and not a top/bottom wrap.
+  if (params.contentProjection === "equirectangular") {
+    v = THREE.MathUtils.clamp(v, 0, 1);
+  }
   ({ u, v } = applyContentFlips(u, v));
-  return { u, v, inBounds: u >= 0 && u <= 1 && v >= 0 && v <= 1 };
+  return {
+    u,
+    v,
+    inBounds: params.contentProjection === "equirectangular"
+      ? u >= 0 && u <= 1
+      : u >= 0 && u <= 1 && v >= 0 && v <= 1,
+  };
 }
 
 /** Eq. (7)'s "检查场馆遮挡物是否在 e 与 p 之间" — casts a ray from `eye` toward `p` and stops just

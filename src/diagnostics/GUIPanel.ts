@@ -127,6 +127,8 @@ export interface GUIPanelDeps {
   onExportConfigJSON: () => void;
   /** Downloads the current 3D view as a PNG screenshot. */
   onExportScreenshot: () => void;
+  /** Downloads the current equirectangular content after applying the horizontal/vertical remap. */
+  onExportAdjustedERP: () => void;
 }
 
 export interface GUIPanelHandle {
@@ -178,7 +180,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
       .onChange(deps.onContentParamsChange),
     contentOffset
       .add(p, "contentPitchOffsetDeg", -90, 90, 1)
-      .name("垂直偏移 Vertical / Pitch（°）")
+      .name("垂直偏移 Vertical / Remap（°）")
       .onChange(deps.onContentParamsChange),
   ];
 
@@ -294,6 +296,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   analysis.add({ run: deps.onRunBatchAnalysis }, "run").name("运行全场座位分析");
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
+  analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
 
   const refreshContentControllers = () => {
