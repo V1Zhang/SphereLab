@@ -129,6 +129,8 @@ export interface GUIPanelDeps {
   onExportScreenshot: () => void;
   /** Downloads the current equirectangular content after applying the horizontal/vertical remap. */
   onExportAdjustedERP: () => void;
+  /** Records the current video after applying the horizontal/vertical remap. */
+  onExportAdjustedVideo: () => void;
 }
 
 export interface GUIPanelHandle {
@@ -297,6 +299,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
+  analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出调整后视频（WebM）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
 
   const refreshContentControllers = () => {

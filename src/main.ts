@@ -1344,7 +1344,9 @@ function exportAdjustedERP() {
     vertexShader: /* glsl */ `
       varying vec2 vOutputUv;
       void main() {
-        vOutputUv = uv;
+        // PlaneGeometry's uv.y=0 is its bottom edge, while ERP row 0 is the image top.
+        // Convert to top-down ERP coordinates before sampling.
+        vOutputUv = vec2(uv.x, 1.0 - uv.y);
         gl_Position = vec4(position.xy, 0.0, 1.0);
       }
     `,
@@ -1410,6 +1412,121 @@ function exportAdjustedERP() {
   outputTexture.dispose();
 }
 
+function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasElement, scratch: HTMLCanvasElement) {
+  const width = output.width;
+  const height = output.height;
+  const source = scratch.getContext("2d")!;
+  const target = output.getContext("2d")!;
+  source.clearRect(0, 0, width, height);
+  source.drawImage(video, 0, 0, width, height);
+
+  const sourceOffsetX = params.contentYawOffsetDeg / 360 * width;
+  const sourceOffsetY = params.contentPitchOffsetDeg / 180 * height;
+  target.clearRect(0, 0, width, height);
+  target.save();
+  if (params.contentHFlip) {
+    target.translate(width, 0);
+    target.scale(-1, 1);
+  }
+  if (params.contentVFlip) {
+    target.translate(0, height);
+    target.scale(1, -1);
+  }
+
+  // Vertical remap: move the source image, then extend its nearest edge into the exposed area.
+  const drawY = -sourceOffsetY;
+  target.drawImage(scratch, 0, drawY, width, height);
+  if (drawY > 0) {
+    target.drawImage(scratch, 0, 0, width, 1, 0, 0, width, drawY);
+  } else if (drawY + height < height) {
+    target.drawImage(scratch, 0, height - 1, width, 1, 0, drawY + height, width, -drawY);
+  }
+
+  // Horizontal remap wraps at the ERP seam. Redrawing from the already vertically remapped
+  // result is intentionally avoided here: the source and target are the same canvas, so the
+  // horizontal wrap is handled by drawing the original frame into temporary strips first.
+  target.restore();
+  const remapped = document.createElement("canvas");
+  remapped.width = width;
+  remapped.height = height;
+  remapped.getContext("2d")!.drawImage(output, 0, 0);
+  target.clearRect(0, 0, width, height);
+  const x = sourceOffsetX;
+  target.drawImage(remapped, x, 0);
+  target.drawImage(remapped, x - width, 0);
+  target.drawImage(remapped, x + width, 0);
+}
+
+function exportAdjustedVideo() {
+  if (params.contentProjection !== "equirectangular") {
+    contentStatusEl.innerHTML = `<span class="err">调整后视频导出只支持 equirectangular 投影。</span>`;
+    return;
+  }
+  if (!currentVideoEl || !Number.isFinite(currentVideoEl.duration) || currentVideoEl.duration <= 0) {
+    contentStatusEl.innerHTML = `<span class="err">请先载入可播放的视频素材。</span>`;
+    return;
+  }
+  if (typeof MediaRecorder === "undefined" || typeof HTMLCanvasElement.prototype.captureStream !== "function") {
+    contentStatusEl.innerHTML = `<span class="err">当前浏览器不支持视频导出，请使用支持 MediaRecorder 的现代浏览器。</span>`;
+    return;
+  }
+
+  const width = currentVideoEl.videoWidth;
+  const height = currentVideoEl.videoHeight;
+  const output = document.createElement("canvas");
+  output.width = width;
+  output.height = height;
+  const scratch = document.createElement("canvas");
+  scratch.width = width;
+  scratch.height = height;
+  const fps = 30;
+  const stream = output.captureStream(fps);
+  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+    .find((type) => MediaRecorder.isTypeSupported(type));
+  if (!mimeType) {
+    contentStatusEl.innerHTML = `<span class="err">当前浏览器没有可用的 WebM 视频编码器。</span>`;
+    return;
+  }
+
+  const chunks: BlobPart[] = [];
+  const recorder = new MediaRecorder(stream, { mimeType });
+  const oldTime = currentVideoEl.currentTime;
+  const oldPaused = currentVideoEl.paused;
+  const oldLoop = currentVideoEl.loop;
+  let raf = 0;
+  let stopped = false;
+  const finish = () => {
+    if (stopped) return;
+    stopped = true;
+    cancelAnimationFrame(raf);
+    currentVideoEl!.removeEventListener("ended", finish);
+    recorder.stop();
+  };
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", () => {
+    currentVideoEl!.pause();
+    currentVideoEl!.currentTime = oldTime;
+    currentVideoEl!.loop = oldLoop;
+    if (!oldPaused) void currentVideoEl!.play();
+    downloadBlob(new Blob(chunks, { type: mimeType }), `spherelab-adjusted-video-${timestampForFilename()}.webm`);
+    contentStatusEl.innerHTML = `已导出调整后视频：<b>WebM</b>`;
+  }, { once: true });
+  currentVideoEl.addEventListener("ended", finish, { once: true });
+  currentVideoEl.currentTime = 0;
+  currentVideoEl.loop = false;
+  currentVideoEl.play().catch(() => finish());
+  recorder.start(250);
+  contentStatusEl.innerHTML = "正在录制调整后视频，请等待视频播放完成…";
+  const renderFrame = () => {
+    if (stopped) return;
+    drawAdjustedVideoFrame(currentVideoEl!, output, scratch);
+    raf = requestAnimationFrame(renderFrame);
+  };
+  renderFrame();
+}
+
 function exportScreenshotPNG() {
   // Force one more render right before capture — animate()'s rAF loop keeps the buffer current,
   // but a render triggered synchronously from this click handler guarantees the frame in the
@@ -1449,6 +1566,7 @@ const guiHandle = createGUIPanel({
   onExportSeatCSV: exportSeatCSV,
   onExportConfigJSON: exportConfigJSON,
   onExportAdjustedERP: exportAdjustedERP,
+  onExportAdjustedVideo: exportAdjustedVideo,
   onExportScreenshot: exportScreenshotPNG,
 });
 
