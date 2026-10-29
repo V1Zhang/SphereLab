@@ -1359,10 +1359,20 @@ function exportAdjustedERP() {
       uniform bool vFlip;
       varying vec2 vOutputUv;
       void main() {
-        // Output ERP -> source ERP. Horizontal movement wraps around; vertical movement keeps
-        // top/bottom semantics and extends the nearest edge instead of wrapping poles.
-        float u = fract(vOutputUv.x - yawOffsetDeg / 360.0);
-        float v = clamp(vOutputUv.y + pitchOffsetDeg / 180.0, 0.0, 1.0);
+        // Output ERP direction -> inverse pitch rotation -> source ERP. This is a spherical
+        // coordinate remap, not a 2D image shift, so every full-ERP output direction maps to
+        // exactly one source direction without edge fill.
+        float yaw = (vOutputUv.x - 0.5) * 6.28318530718;
+        float pitch = (0.5 - vOutputUv.y) * 3.14159265359;
+        vec3 d = vec3(cos(pitch) * sin(yaw), -cos(pitch) * cos(yaw), sin(pitch));
+        float theta = radians(pitchOffsetDeg);
+        float c = cos(theta);
+        float s = sin(theta);
+        d = vec3(d.x, c * d.y + s * d.z, -s * d.y + c * d.z);
+        float sourceYaw = atan(d.x, -d.y);
+        float sourcePitch = asin(clamp(d.z, -1.0, 1.0));
+        float u = fract(0.5 + sourceYaw / 6.28318530718 - yawOffsetDeg / 360.0);
+        float v = 0.5 - sourcePitch / 3.14159265359;
         if (hFlip) u = 1.0 - u;
         if (vFlip) v = 1.0 - v;
         gl_FragColor = texture2D(map, vec2(u, v));
@@ -1419,42 +1429,41 @@ function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasEleme
   const target = output.getContext("2d")!;
   source.clearRect(0, 0, width, height);
   source.drawImage(video, 0, 0, width, height);
-
-  const sourceOffsetX = params.contentYawOffsetDeg / 360 * width;
-  const sourceOffsetY = params.contentPitchOffsetDeg / 180 * height;
-  target.clearRect(0, 0, width, height);
-  target.save();
-  if (params.contentHFlip) {
-    target.translate(width, 0);
-    target.scale(-1, 1);
+  const sourcePixels = source.getImageData(0, 0, width, height).data;
+  const outputImage = target.createImageData(width, height);
+  const theta = THREE.MathUtils.degToRad(params.contentPitchOffsetDeg);
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  const yawOffset = THREE.MathUtils.degToRad(params.contentYawOffsetDeg);
+  for (let y = 0; y < height; y += 1) {
+    const v = (y + 0.5) / height;
+    const pitch = (0.5 - v) * Math.PI;
+    const cp = Math.cos(pitch);
+    for (let x = 0; x < width; x += 1) {
+      const u = (x + 0.5) / width;
+      const yaw = (u - 0.5) * Math.PI * 2;
+      const dx = cp * Math.sin(yaw);
+      const dy = -cp * Math.cos(yaw);
+      const dz = Math.sin(pitch);
+      const sx = dx;
+      const sy = c * dy + s * dz;
+      const sz = -s * dy + c * dz;
+      let sourceU = 0.5 + Math.atan2(sx, -sy) / (Math.PI * 2) - yawOffset / (Math.PI * 2);
+      sourceU = ((sourceU % 1) + 1) % 1;
+      let sourceV = 0.5 - Math.asin(Math.max(-1, Math.min(1, sz))) / Math.PI;
+      if (params.contentHFlip) sourceU = 1 - sourceU;
+      if (params.contentVFlip) sourceV = 1 - sourceV;
+      const sourceX = Math.min(width - 1, Math.max(0, Math.floor(sourceU * width)));
+      const sourceY = Math.min(height - 1, Math.max(0, Math.floor(sourceV * height)));
+      const sourceIndex = (sourceY * width + sourceX) * 4;
+      const outputIndex = (y * width + x) * 4;
+      outputImage.data[outputIndex] = sourcePixels[sourceIndex];
+      outputImage.data[outputIndex + 1] = sourcePixels[sourceIndex + 1];
+      outputImage.data[outputIndex + 2] = sourcePixels[sourceIndex + 2];
+      outputImage.data[outputIndex + 3] = sourcePixels[sourceIndex + 3];
+    }
   }
-  if (params.contentVFlip) {
-    target.translate(0, height);
-    target.scale(1, -1);
-  }
-
-  // Vertical remap: move the source image, then extend its nearest edge into the exposed area.
-  const drawY = -sourceOffsetY;
-  target.drawImage(scratch, 0, drawY, width, height);
-  if (drawY > 0) {
-    target.drawImage(scratch, 0, 0, width, 1, 0, 0, width, drawY);
-  } else if (drawY + height < height) {
-    target.drawImage(scratch, 0, height - 1, width, 1, 0, drawY + height, width, -drawY);
-  }
-
-  // Horizontal remap wraps at the ERP seam. Redrawing from the already vertically remapped
-  // result is intentionally avoided here: the source and target are the same canvas, so the
-  // horizontal wrap is handled by drawing the original frame into temporary strips first.
-  target.restore();
-  const remapped = document.createElement("canvas");
-  remapped.width = width;
-  remapped.height = height;
-  remapped.getContext("2d")!.drawImage(output, 0, 0);
-  target.clearRect(0, 0, width, height);
-  const x = sourceOffsetX;
-  target.drawImage(remapped, x, 0);
-  target.drawImage(remapped, x - width, 0);
-  target.drawImage(remapped, x + width, 0);
+  target.putImageData(outputImage, 0, 0);
 }
 
 function exportAdjustedVideo() {
@@ -1676,23 +1685,19 @@ function computeContentUV(localPos: THREE.Vector3): { u: number; v: number; inBo
     return { u, v, inBounds: u >= 0 && u <= 1 && v >= 0 && v <= 1 };
   }
 
+  if (params.contentProjection === "equirectangular") {
+    dContent.applyAxisAngle(new THREE.Vector3(1, 0, 0), -THREE.MathUtils.degToRad(params.contentPitchOffsetDeg));
+  }
   const { yawDeg, pitchDeg } = zUpDirectionToYawPitch(dContent);
   const cYawDeg = wrapYawDeg(yawDeg - params.contentYawOffsetDeg);
-  const cPitchDeg = pitchDeg - params.contentPitchOffsetDeg;
+  const cPitchDeg = params.contentProjection === "equirectangular" ? pitchDeg : pitchDeg - params.contentPitchOffsetDeg;
   let u = 0.5 + cYawDeg / params.contentHFovDeg;
   let v = 0.5 - cPitchDeg / params.contentVFovDeg;
-  // Match ERPMaskMaterial: ERP vertical offset is a bounded content remap with edge extension,
-  // not a spherical pitch rotation and not a top/bottom wrap.
-  if (params.contentProjection === "equirectangular") {
-    v = THREE.MathUtils.clamp(v, 0, 1);
-  }
   ({ u, v } = applyContentFlips(u, v));
   return {
     u,
     v,
-    inBounds: params.contentProjection === "equirectangular"
-      ? u >= 0 && u <= 1
-      : u >= 0 && u <= 1 && v >= 0 && v <= 1,
+    inBounds: u >= 0 && u <= 1 && v >= 0 && v <= 1,
   };
 }
 

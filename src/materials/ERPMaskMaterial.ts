@@ -269,6 +269,16 @@ void main() {
     vec3 originObjectSpace = uWarpToEye ? toObjectSpaceInverseTilt(uReferenceEyeWorldPos - uMeshWorldOffset) : vec3(0.0);
     vec3 contentOrigin = originObjectSpace + uOriginOffset;
     vec3 dContent = contentRayDirection(vObjPos, contentOrigin);
+    // ERP vertical offset is a rotation of the coordinate frame around the equatorial
+    // horizontal axis. Map the output direction back through the inverse rotation before
+    // converting it to ERP yaw/pitch. This is a bijection over a complete 360x180 ERP: no
+    // clamp, edge fill, or top/bottom wrap is involved.
+    if (uProjection == 0) {
+      float pitchOffsetRad = radians(uPitchOffsetDeg);
+      float c = cos(pitchOffsetRad);
+      float s = sin(pitchOffsetRad);
+      dContent = vec3(dContent.x, c * dContent.y + s * dContent.z, -s * dContent.y + c * dContent.z);
+    }
     float contentYawDeg = atan(dContent.x, -dContent.y) * RAD2DEG;
     float contentPitchDeg = asin(clamp(dContent.z, -1.0, 1.0)) * RAD2DEG;
     if (uLedPixelate) {
@@ -303,20 +313,11 @@ void main() {
       inBounds = mapFisheye(dContent, false, true, u, v);
     } else {
       float cYawDeg = contentYawDeg - uYawOffsetDeg;
-      float cPitchDeg = contentPitchDeg - uPitchOffsetDeg;
+      float cPitchDeg = contentPitchDeg;
       cYawDeg = mod(cYawDeg + 180.0, 360.0) - 180.0; // fold into (-180, 180] after the offset
       u = 0.5 + cYawDeg / uHFovDeg;
       v = 0.5 - cPitchDeg / uVFovDeg;
-      // ERP vertical offset is a content remap, not a spherical pitch rotation.  Keep the
-      // source's top/bottom semantics intact (sky stays sky, ground stays ground) and extend
-      // the nearest edge when the requested shift reaches beyond the finite image.  A spherical
-      // rotation would make the poles wrap through one another and can put ground above sky.
-      if (uProjection == 0) {
-        v = clamp(v, 0.0, 1.0);
-        inBounds = true;
-      } else {
-        inBounds = true;
-      }
+      inBounds = true;
     }
 
     if (uHFlip) u = 1.0 - u;

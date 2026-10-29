@@ -182,7 +182,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
       .onChange(deps.onContentParamsChange),
     contentOffset
       .add(p, "contentPitchOffsetDeg", -90, 90, 1)
-      .name("垂直偏移 Vertical / Remap（°）")
+      .name("垂直偏移 Vertical / Pitch（°）")
       .onChange(deps.onContentParamsChange),
   ];
 
