@@ -1307,17 +1307,26 @@ function currentContentDimensions(): { width: number; height: number } | null {
   return width > 0 && height > 0 ? { width, height } : null;
 }
 
+function projectionToExportId(projection: ERPProjection): number {
+  switch (projection) {
+    case "perspective": return 1;
+    case "fisheyeEquidistant": return 2;
+    case "fisheyeEquisolid": return 3;
+    case "cylindrical": return 4;
+    case "domemaster": return 5;
+    case "equirectangular":
+    default: return 0;
+  }
+}
+
 /**
- * Exports the loaded ERP after applying the same content remap used by the dome shader.
- * This intentionally exports a flat ERP PNG, not a perspective screenshot: output pixels are
- * mapped from output ERP UVs back into the source texture, with horizontal wrap and vertical
- * edge extension matching ERPMaskMaterial's equirectangular branch.
+ * Exports the loaded content as a standard 2:1 ERP PNG. The output pixel is first interpreted as
+ * a direction on a full 360°×180° sphere, then that direction is mapped back into the currently
+ * loaded source projection. This is deliberately the inverse of the dome sampling path: an
+ * equirectangular source is rotated, while a fisheye/perspective/dome-master source is unwarped
+ * into ERP instead of being rejected.
  */
 function exportAdjustedERP() {
-  if (params.contentProjection !== "equirectangular") {
-    contentStatusEl.innerHTML = `<span class="err">调整后 ERP 导出只支持 equirectangular 投影，请先切换投影类型。</span>`;
-    return;
-  }
   const dimensions = currentContentDimensions();
   if (!dimensions) {
     contentStatusEl.innerHTML = `<span class="err">当前素材还没有可导出的图像尺寸。</span>`;
@@ -1336,6 +1345,9 @@ function exportAdjustedERP() {
   const exportMaterial = new THREE.ShaderMaterial({
     uniforms: {
       map: { value: outputTexture },
+      projection: { value: projectionToExportId(params.contentProjection) },
+      hFovDeg: { value: params.contentHFovDeg },
+      vFovDeg: { value: params.contentVFovDeg },
       yawOffsetDeg: { value: params.contentYawOffsetDeg },
       pitchOffsetDeg: { value: params.contentPitchOffsetDeg },
       hFlip: { value: params.contentHFlip },
@@ -1353,28 +1365,115 @@ function exportAdjustedERP() {
     fragmentShader: /* glsl */ `
       precision highp float;
       uniform sampler2D map;
+      uniform int projection;
+      uniform float hFovDeg;
+      uniform float vFovDeg;
       uniform float yawOffsetDeg;
       uniform float pitchOffsetDeg;
       uniform bool hFlip;
       uniform bool vFlip;
       varying vec2 vOutputUv;
+
+      const float PI = 3.14159265359;
+
+      void cameraBasis(out vec3 forward, out vec3 right, out vec3 up) {
+        float yaw = radians(yawOffsetDeg);
+        float pitch = radians(pitchOffsetDeg);
+        forward = vec3(cos(pitch) * sin(yaw), -cos(pitch) * cos(yaw), sin(pitch));
+        vec3 worldUp = abs(forward.z) > 0.98 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        right = normalize(cross(worldUp, forward));
+        up = normalize(cross(forward, right));
+      }
+
+      bool mapPerspective(vec3 d, out float u, out float v) {
+        vec3 forward; vec3 right; vec3 up;
+        cameraBasis(forward, right, up);
+        float z = dot(d, forward);
+        if (z <= 1e-4) { u = -1.0; v = -1.0; return false; }
+        float halfW = tan(radians(hFovDeg) * 0.5);
+        float halfH = tan(radians(vFovDeg) * 0.5);
+        u = 0.5 + (dot(d, right) / z) / (2.0 * halfW);
+        v = 0.5 - (dot(d, up) / z) / (2.0 * halfH);
+        return true;
+      }
+
+      bool mapFisheye(vec3 d, bool equisolid, bool zenithAxis, out float u, out float v) {
+        vec3 forward; vec3 right; vec3 up;
+        if (zenithAxis) {
+          forward = vec3(0.0, 0.0, 1.0);
+          right = vec3(1.0, 0.0, 0.0);
+          up = vec3(0.0, 1.0, 0.0);
+        } else {
+          cameraBasis(forward, right, up);
+        }
+        float z = dot(d, forward);
+        float x = dot(d, right);
+        float y = dot(d, up);
+        float theta = acos(clamp(z, -1.0, 1.0));
+        float xyLen = length(vec2(x, y));
+        float cosPhi = xyLen > 1e-6 ? x / xyLen : 0.0;
+        float sinPhi = xyLen > 1e-6 ? y / xyLen : 0.0;
+        float halfW = radians(hFovDeg) * 0.5;
+        float halfH = radians(vFovDeg) * 0.5;
+        float radial = equisolid ? sin(theta * 0.5) : theta;
+        float maxX = equisolid ? sin(halfW * 0.5) : halfW;
+        float maxY = equisolid ? sin(halfH * 0.5) : halfH;
+        u = 0.5 + 0.5 * (radial * cosPhi) / max(maxX, 1e-5);
+        v = 0.5 - 0.5 * (radial * sinPhi) / max(maxY, 1e-5);
+        return theta <= max(halfW, halfH) + 1e-5;
+      }
+
+      bool mapCylindrical(vec3 d, out float u, out float v) {
+        vec3 forward; vec3 right; vec3 up;
+        cameraBasis(forward, right, up);
+        float z = dot(d, forward);
+        float x = dot(d, right);
+        float y = dot(d, up);
+        float yaw = atan(x, z);
+        float halfW = radians(hFovDeg) * 0.5;
+        float horizontalLen = length(vec2(x, z));
+        if (horizontalLen <= 1e-5) { u = -1.0; v = -1.0; return false; }
+        u = 0.5 + yaw / max(radians(hFovDeg), 1e-5);
+        v = 0.5 - (y / horizontalLen) / (2.0 * tan(max(radians(vFovDeg) * 0.5, 1e-5)));
+        return abs(yaw) <= halfW + 1e-5;
+      }
+
       void main() {
-        // Output ERP direction -> inverse pitch rotation -> source ERP. This is a spherical
-        // coordinate remap, not a 2D image shift, so every full-ERP output direction maps to
-        // exactly one source direction without edge fill.
-        float yaw = (vOutputUv.x - 0.5) * 6.28318530718;
-        float pitch = (0.5 - vOutputUv.y) * 3.14159265359;
+        float yaw = (vOutputUv.x - 0.5) * 2.0 * PI;
+        float pitch = (0.5 - vOutputUv.y) * PI;
         vec3 d = vec3(cos(pitch) * sin(yaw), -cos(pitch) * cos(yaw), sin(pitch));
-        float theta = radians(pitchOffsetDeg);
-        float c = cos(theta);
-        float s = sin(theta);
-        d = vec3(d.x, c * d.y + s * d.z, -s * d.y + c * d.z);
-        float sourceYaw = atan(d.x, -d.y);
-        float sourcePitch = asin(clamp(d.z, -1.0, 1.0));
-        float u = fract(0.5 + sourceYaw / 6.28318530718 - yawOffsetDeg / 360.0);
-        float v = 0.5 - sourcePitch / 3.14159265359;
+        float u = -1.0;
+        float v = -1.0;
+        bool inBounds = true;
+
+        if (projection == 0) {
+          float theta = radians(pitchOffsetDeg);
+          float c = cos(theta); float s = sin(theta);
+          d = vec3(d.x, c * d.y + s * d.z, -s * d.y + c * d.z);
+          float sourceYaw = atan(d.x, -d.y);
+          float sourcePitch = asin(clamp(d.z, -1.0, 1.0));
+          u = fract(0.5 + sourceYaw / (2.0 * PI) - yawOffsetDeg / 360.0);
+          v = 0.5 - sourcePitch / PI;
+        } else if (projection == 1) {
+          inBounds = mapPerspective(d, u, v);
+        } else if (projection == 2) {
+          inBounds = mapFisheye(d, false, false, u, v);
+        } else if (projection == 3) {
+          inBounds = mapFisheye(d, true, false, u, v);
+        } else if (projection == 4) {
+          inBounds = mapCylindrical(d, u, v);
+        } else {
+          inBounds = mapFisheye(d, false, true, u, v);
+        }
         if (hFlip) u = 1.0 - u;
         if (vFlip) v = 1.0 - v;
+        // A fisheye usually covers only part of the full sphere. ERP export is a raster output
+        // interface, so uncovered directions are explicitly written as opaque black instead of
+        // being discarded into transparent pixels.
+        if (!inBounds || u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) {
+          gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+          return;
+        }
         gl_FragColor = texture2D(map, vec2(u, v));
       }
     `,
@@ -1385,27 +1484,31 @@ function exportAdjustedERP() {
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), exportMaterial);
   exportScene.add(quad);
 
-  const target = new THREE.WebGLRenderTarget(dimensions.width, dimensions.height, {
+  // ERP is conventionally 2:1. A square fisheye source therefore becomes width×width/2,
+  // while a 2:1 source keeps its native pixel dimensions.
+  const outputWidth = dimensions.width;
+  const outputHeight = Math.max(1, Math.round(outputWidth / 2));
+  const target = new THREE.WebGLRenderTarget(outputWidth, outputHeight, {
     depthBuffer: false,
     stencilBuffer: false,
   });
-  const pixels = new Uint8Array(dimensions.width * dimensions.height * 4);
+  const pixels = new Uint8Array(outputWidth * outputHeight * 4);
   const previousTarget = renderer.getRenderTarget();
   renderer.setRenderTarget(target);
   renderer.render(exportScene, exportCamera);
-  renderer.readRenderTargetPixels(target, 0, 0, dimensions.width, dimensions.height, pixels);
+  renderer.readRenderTargetPixels(target, 0, 0, outputWidth, outputHeight, pixels);
   renderer.setRenderTarget(previousTarget);
 
   // WebGL readback is bottom-to-top; Canvas/ImageData is top-to-bottom.
-  const imageData = new ImageData(dimensions.width, dimensions.height);
-  const rowBytes = dimensions.width * 4;
-  for (let y = 0; y < dimensions.height; y += 1) {
-    const sourceStart = (dimensions.height - 1 - y) * rowBytes;
+  const imageData = new ImageData(outputWidth, outputHeight);
+  const rowBytes = outputWidth * 4;
+  for (let y = 0; y < outputHeight; y += 1) {
+    const sourceStart = (outputHeight - 1 - y) * rowBytes;
     imageData.data.set(pixels.subarray(sourceStart, sourceStart + rowBytes), y * rowBytes);
   }
   const canvas = document.createElement("canvas");
-  canvas.width = dimensions.width;
-  canvas.height = dimensions.height;
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
   canvas.getContext("2d")!.putImageData(imageData, 0, 0);
   canvas.toBlob((blob) => {
     if (!blob) {
@@ -1413,7 +1516,7 @@ function exportAdjustedERP() {
       return;
     }
     downloadBlob(blob, `spherelab-adjusted-erp-${timestampForFilename()}.png`);
-    contentStatusEl.innerHTML = `已导出调整后 ERP：<b>${dimensions.width}×${dimensions.height} PNG</b>`;
+    contentStatusEl.innerHTML = `已导出 ERP：<b>${outputWidth}×${outputHeight} PNG</b>`;
   }, "image/png");
 
   target.dispose();
@@ -1422,19 +1525,102 @@ function exportAdjustedERP() {
   outputTexture.dispose();
 }
 
+type ExportVec3 = [number, number, number];
+
+function exportNormalize(v: ExportVec3): ExportVec3 {
+  const length = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function exportDot(a: ExportVec3, b: ExportVec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function exportCross(a: ExportVec3, b: ExportVec3): ExportVec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function exportCameraBasis(): { forward: ExportVec3; right: ExportVec3; up: ExportVec3 } {
+  const yaw = THREE.MathUtils.degToRad(params.contentYawOffsetDeg);
+  const pitch = THREE.MathUtils.degToRad(params.contentPitchOffsetDeg);
+  const forward: ExportVec3 = [Math.cos(pitch) * Math.sin(yaw), -Math.cos(pitch) * Math.cos(yaw), Math.sin(pitch)];
+  const worldUp: ExportVec3 = Math.abs(forward[2]) > 0.98 ? [0, 1, 0] : [0, 0, 1];
+  const right = exportNormalize(exportCross(worldUp, forward));
+  const up = exportNormalize(exportCross(forward, right));
+  return { forward, right, up };
+}
+
+function exportSourceUV(direction: ExportVec3): [number, number] | null {
+  const projection = params.contentProjection;
+  let u = -1;
+  let v = -1;
+  let inBounds = true;
+
+  if (projection === "equirectangular") {
+    const theta = THREE.MathUtils.degToRad(params.contentPitchOffsetDeg);
+    const c = Math.cos(theta);
+    const s = Math.sin(theta);
+    const d: ExportVec3 = [direction[0], c * direction[1] + s * direction[2], -s * direction[1] + c * direction[2]];
+    u = 0.5 + Math.atan2(d[0], -d[1]) / (Math.PI * 2) - params.contentYawOffsetDeg / 360;
+    u = ((u % 1) + 1) % 1;
+    v = 0.5 - Math.asin(Math.max(-1, Math.min(1, d[2]))) / Math.PI;
+  } else {
+    const basis = exportCameraBasis();
+    const forward = projection === "domemaster" ? ([0, 0, 1] as ExportVec3) : basis.forward;
+    const right = projection === "domemaster" ? ([1, 0, 0] as ExportVec3) : basis.right;
+    const up = projection === "domemaster" ? ([0, 1, 0] as ExportVec3) : basis.up;
+    const z = exportDot(direction, forward);
+    const x = exportDot(direction, right);
+    const y = exportDot(direction, up);
+
+    if (projection === "perspective") {
+      if (z <= 1e-4) return null;
+      const halfW = Math.tan(THREE.MathUtils.degToRad(params.contentHFovDeg) * 0.5);
+      const halfH = Math.tan(THREE.MathUtils.degToRad(params.contentVFovDeg) * 0.5);
+      u = 0.5 + (x / z) / (2 * halfW);
+      v = 0.5 - (y / z) / (2 * halfH);
+    } else if (projection === "fisheyeEquidistant" || projection === "fisheyeEquisolid" || projection === "domemaster") {
+      const theta = Math.acos(Math.max(-1, Math.min(1, z)));
+      const xyLength = Math.hypot(x, y);
+      const cosPhi = xyLength > 1e-6 ? x / xyLength : 0;
+      const sinPhi = xyLength > 1e-6 ? y / xyLength : 0;
+      const halfW = THREE.MathUtils.degToRad(params.contentHFovDeg) * 0.5;
+      const halfH = THREE.MathUtils.degToRad(params.contentVFovDeg) * 0.5;
+      const equisolid = projection === "fisheyeEquisolid";
+      const radial = equisolid ? Math.sin(theta * 0.5) : theta;
+      const maxX = equisolid ? Math.sin(halfW * 0.5) : halfW;
+      const maxY = equisolid ? Math.sin(halfH * 0.5) : halfH;
+      u = 0.5 + 0.5 * (radial * cosPhi) / Math.max(maxX, 1e-5);
+      v = 0.5 - 0.5 * (radial * sinPhi) / Math.max(maxY, 1e-5);
+      inBounds = theta <= Math.max(halfW, halfH) + 1e-5;
+    } else {
+      const yaw = Math.atan2(x, z);
+      const halfW = THREE.MathUtils.degToRad(params.contentHFovDeg) * 0.5;
+      const horizontalLength = Math.hypot(x, z);
+      if (horizontalLength <= 1e-5) return null;
+      u = 0.5 + yaw / Math.max(THREE.MathUtils.degToRad(params.contentHFovDeg), 1e-5);
+      v = 0.5 - (y / horizontalLength) / (2 * Math.tan(Math.max(THREE.MathUtils.degToRad(params.contentVFovDeg) * 0.5, 1e-5)));
+      inBounds = Math.abs(yaw) <= halfW + 1e-5;
+    }
+  }
+
+  if (params.contentHFlip) u = 1 - u;
+  if (params.contentVFlip) v = 1 - v;
+  return inBounds && u >= 0 && u <= 1 && v >= 0 && v <= 1 ? [u, v] : null;
+}
+
 function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasElement, scratch: HTMLCanvasElement) {
   const width = output.width;
   const height = output.height;
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
   const source = scratch.getContext("2d")!;
   const target = output.getContext("2d")!;
   source.clearRect(0, 0, width, height);
-  source.drawImage(video, 0, 0, width, height);
-  const sourcePixels = source.getImageData(0, 0, width, height).data;
+  source.clearRect(0, 0, sourceWidth, sourceHeight);
+  source.drawImage(video, 0, 0, sourceWidth, sourceHeight);
+  const sourcePixels = source.getImageData(0, 0, sourceWidth, sourceHeight).data;
   const outputImage = target.createImageData(width, height);
-  const theta = THREE.MathUtils.degToRad(params.contentPitchOffsetDeg);
-  const c = Math.cos(theta);
-  const s = Math.sin(theta);
-  const yawOffset = THREE.MathUtils.degToRad(params.contentYawOffsetDeg);
   for (let y = 0; y < height; y += 1) {
     const v = (y + 0.5) / height;
     const pitch = (0.5 - v) * Math.PI;
@@ -1442,21 +1628,18 @@ function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasEleme
     for (let x = 0; x < width; x += 1) {
       const u = (x + 0.5) / width;
       const yaw = (u - 0.5) * Math.PI * 2;
-      const dx = cp * Math.sin(yaw);
-      const dy = -cp * Math.cos(yaw);
-      const dz = Math.sin(pitch);
-      const sx = dx;
-      const sy = c * dy + s * dz;
-      const sz = -s * dy + c * dz;
-      let sourceU = 0.5 + Math.atan2(sx, -sy) / (Math.PI * 2) - yawOffset / (Math.PI * 2);
-      sourceU = ((sourceU % 1) + 1) % 1;
-      let sourceV = 0.5 - Math.asin(Math.max(-1, Math.min(1, sz))) / Math.PI;
-      if (params.contentHFlip) sourceU = 1 - sourceU;
-      if (params.contentVFlip) sourceV = 1 - sourceV;
-      const sourceX = Math.min(width - 1, Math.max(0, Math.floor(sourceU * width)));
-      const sourceY = Math.min(height - 1, Math.max(0, Math.floor(sourceV * height)));
-      const sourceIndex = (sourceY * width + sourceX) * 4;
+      const sourceUV = exportSourceUV([cp * Math.sin(yaw), -cp * Math.cos(yaw), Math.sin(pitch)]);
       const outputIndex = (y * width + x) * 4;
+      if (!sourceUV) {
+        outputImage.data[outputIndex] = 0;
+        outputImage.data[outputIndex + 1] = 0;
+        outputImage.data[outputIndex + 2] = 0;
+        outputImage.data[outputIndex + 3] = 255;
+        continue;
+      }
+      const sourceX = Math.min(sourceWidth - 1, Math.max(0, Math.floor(sourceUV[0] * sourceWidth)));
+      const sourceY = Math.min(sourceHeight - 1, Math.max(0, Math.floor(sourceUV[1] * sourceHeight)));
+      const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
       outputImage.data[outputIndex] = sourcePixels[sourceIndex];
       outputImage.data[outputIndex + 1] = sourcePixels[sourceIndex + 1];
       outputImage.data[outputIndex + 2] = sourcePixels[sourceIndex + 2];
@@ -1467,10 +1650,6 @@ function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasEleme
 }
 
 function exportAdjustedVideo() {
-  if (params.contentProjection !== "equirectangular") {
-    contentStatusEl.innerHTML = `<span class="err">调整后视频导出只支持 equirectangular 投影。</span>`;
-    return;
-  }
   if (!currentVideoEl || !Number.isFinite(currentVideoEl.duration) || currentVideoEl.duration <= 0) {
     contentStatusEl.innerHTML = `<span class="err">请先载入可播放的视频素材。</span>`;
     return;
@@ -1480,14 +1659,16 @@ function exportAdjustedVideo() {
     return;
   }
 
-  const width = currentVideoEl.videoWidth;
-  const height = currentVideoEl.videoHeight;
+  const sourceWidth = currentVideoEl.videoWidth;
+  const sourceHeight = currentVideoEl.videoHeight;
+  const width = sourceWidth;
+  const height = Math.max(1, Math.round(width / 2));
   const output = document.createElement("canvas");
   output.width = width;
   output.height = height;
   const scratch = document.createElement("canvas");
-  scratch.width = width;
-  scratch.height = height;
+  scratch.width = sourceWidth;
+  scratch.height = sourceHeight;
   const fps = 30;
   const stream = output.captureStream(fps);
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
@@ -1520,14 +1701,14 @@ function exportAdjustedVideo() {
     currentVideoEl!.loop = oldLoop;
     if (!oldPaused) void currentVideoEl!.play();
     downloadBlob(new Blob(chunks, { type: mimeType }), `spherelab-adjusted-video-${timestampForFilename()}.webm`);
-    contentStatusEl.innerHTML = `已导出调整后视频：<b>WebM</b>`;
+    contentStatusEl.innerHTML = `已导出 ERP 视频：<b>${width}×${height} WebM</b>`;
   }, { once: true });
   currentVideoEl.addEventListener("ended", finish, { once: true });
   currentVideoEl.currentTime = 0;
   currentVideoEl.loop = false;
   currentVideoEl.play().catch(() => finish());
   recorder.start(250);
-  contentStatusEl.innerHTML = "正在录制调整后视频，请等待视频播放完成…";
+  contentStatusEl.innerHTML = "正在录制 ERP 视频，请等待视频播放完成…";
   const renderFrame = () => {
     if (stopped) return;
     drawAdjustedVideoFrame(currentVideoEl!, output, scratch);

@@ -127,9 +127,9 @@ export interface GUIPanelDeps {
   onExportConfigJSON: () => void;
   /** Downloads the current 3D view as a PNG screenshot. */
   onExportScreenshot: () => void;
-  /** Downloads the current equirectangular content after applying the horizontal/vertical remap. */
+  /** Downloads the current content converted to a standard 2:1 equirectangular PNG. */
   onExportAdjustedERP: () => void;
-  /** Records the current video after applying the horizontal/vertical remap. */
+  /** Records the current video after converting it to a standard 2:1 ERP video. */
   onExportAdjustedVideo: () => void;
 }
 
@@ -299,7 +299,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
-  analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出调整后视频（WebM）");
+  analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（WebM）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
 
   const refreshContentControllers = () => {
