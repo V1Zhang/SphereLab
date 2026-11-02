@@ -198,7 +198,10 @@ function buildFlatTransparentMaterial(color: THREE.ColorRepresentation, opacity:
     // uses for the media plane, and the same reason: "viewed from inside the concave sphere, but
     // Exterior Cutaway looks at it from outside" — see that file's comment.
     side: THREE.DoubleSide,
-    depthTest: false,
+    // The shell is an actual outer boundary, not an always-on-top overlay. With depth testing
+    // enabled and a render order before the inner media plane, the shell remains visible from
+    // inside the venue only where no closer screen surface exists and cannot gray the screen.
+    depthTest: true,
     depthWrite: false,
     clippingPlanes,
   });
@@ -210,19 +213,16 @@ function buildShell(cfg: VenueConfig): THREE.Object3D {
   const center = new THREE.Vector3(0, cfg.building.centerHeight, 0);
 
   const geo = new THREE.SphereGeometry(cfg.building.shellRadius, 48, 32);
-  // From the default in-dome audience viewpoints the media plane's own (much closer, effectively
-  // opaque) surface would normally hide any outer-shell indicator entirely — you'd only ever see
-  // the inner dome and have no visual reference for how close the draggable inner screen is to the
-  // outer boundary (see docs/SCREEN_DECOUPLING_DESIGN.md — this is exactly what the placement
-  // constraints are checking, so it should be visible while dragging, not just from Exterior
-  // Cutaway). depthTest:false + a renderOrder above the media plane's (0) but below the placement
-  // handles' (998) makes it show through from any camera position, same always-on-top trick as the
-  // handles in main.ts, without ever blocking the handles. Color is the ONLY thing distinguishing
-  // this from the inner media plane — no glow, no grid, just a flat tinted transparency.
+  // The shell is deliberately rendered before the transparent inner media plane. Its real depth
+  // is then respected by the media plane, so an audience view sees the screen in front of the
+  // shell instead of a gray shell tint over the screen. It remains visible in areas where the
+  // inner screen has no surface and from exterior/cutaway views. Color is the ONLY thing
+  // distinguishing this from the inner media plane — no glow, no grid, just a flat tinted
+  // transparency.
   const mat = buildFlatTransparentMaterial(0x9aa5b8, 0.22, []);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.copy(center);
-  mesh.renderOrder = 500;
+  mesh.renderOrder = -1;
   mesh.userData.isBuildingShell = true;
   return mesh;
 }

@@ -168,6 +168,31 @@ const params: GUIParams = {
   // 修改模式 / 预演模式：外屏 + 观众席永远只能靠滑杆调（跟之前一样）；内屏在"修改模式"下允许
   // 3D 拖拽 + 滑杆改参数，切到"预演模式"后只锁 3D 拖拽，滑杆仍可调参数。
   placementMode: "edit",
+  ledPixelPitchMm: cfg.led.pixelPitchMm,
+  ledPackageType: cfg.led.packageType,
+  ledMountingMethod: cfg.led.mountingMethod,
+  ledContrastRatio: cfg.led.contrastRatio,
+  ledBrightnessNits: cfg.led.whiteBalanceBrightnessNits,
+  ledRefreshRateHz: cfg.led.refreshRateHz,
+  ledGrayscaleBits: cfg.led.grayscaleBits,
+  ledReflectancePct: cfg.led.surfaceReflectancePct,
+  ledColorTempMinK: cfg.led.colorTemperatureMinK,
+  ledColorTempMaxK: cfg.led.colorTemperatureMaxK,
+  ledAveragePowerWPerM2: cfg.led.averagePowerWPerM2,
+  ledMaximumPowerWPerM2: cfg.led.maximumPowerWPerM2,
+  ledViewingAngleH: cfg.led.horizontalViewingAngleDeg,
+  ledViewingAngleV: cfg.led.verticalViewingAngleDeg,
+  ledLifetimeHours: cfg.led.ledLifetimeHours,
+  signalFrameRateFps: cfg.signal.videoFrameRateFps,
+  signalScanMode: cfg.signal.scanMode,
+  signalBitDepth: cfg.signal.bitDepth,
+  signalChroma: cfg.signal.chromaSubsampling,
+  signalColorGamut: cfg.signal.colorGamut,
+  signalGamma: cfg.signal.gamma,
+  signalAudioContainer: cfg.signal.audioContainer,
+  signalAudioChannels: cfg.signal.audioChannels,
+  signalAudioFormat: cfg.signal.audioFormat,
+  signalLoudnessLufs: cfg.signal.loudnessLufs,
 };
 
 function applyVisibilityFromParams() {
@@ -215,6 +240,34 @@ function syncCfgFromParams() {
   cfg.audience.riseHeight = params.riseHeight;
   cfg.audience.eyeHeight = params.eyeHeight;
   cfg.building.shellRadius = params.shellRadius;
+}
+
+function syncDisplaySpecFromParams() {
+  cfg.led.pixelPitchMm = params.ledPixelPitchMm;
+  cfg.led.packageType = params.ledPackageType;
+  cfg.led.mountingMethod = params.ledMountingMethod;
+  cfg.led.contrastRatio = params.ledContrastRatio;
+  cfg.led.whiteBalanceBrightnessNits = params.ledBrightnessNits;
+  cfg.led.refreshRateHz = params.ledRefreshRateHz;
+  cfg.led.grayscaleBits = params.ledGrayscaleBits;
+  cfg.led.surfaceReflectancePct = params.ledReflectancePct;
+  cfg.led.colorTemperatureMinK = params.ledColorTempMinK;
+  cfg.led.colorTemperatureMaxK = params.ledColorTempMaxK;
+  cfg.led.averagePowerWPerM2 = params.ledAveragePowerWPerM2;
+  cfg.led.maximumPowerWPerM2 = params.ledMaximumPowerWPerM2;
+  cfg.led.horizontalViewingAngleDeg = params.ledViewingAngleH;
+  cfg.led.verticalViewingAngleDeg = params.ledViewingAngleV;
+  cfg.led.ledLifetimeHours = params.ledLifetimeHours;
+  cfg.signal.videoFrameRateFps = params.signalFrameRateFps;
+  cfg.signal.scanMode = params.signalScanMode;
+  cfg.signal.bitDepth = params.signalBitDepth;
+  cfg.signal.chromaSubsampling = params.signalChroma;
+  cfg.signal.colorGamut = params.signalColorGamut;
+  cfg.signal.gamma = params.signalGamma;
+  cfg.signal.audioContainer = params.signalAudioContainer;
+  cfg.signal.audioChannels = params.signalAudioChannels;
+  cfg.signal.audioFormat = params.signalAudioFormat;
+  cfg.signal.loudnessLufs = params.signalLoudnessLufs;
 }
 
 function rebuildDiagnostics() {
@@ -387,6 +440,10 @@ function onProjectionChange(newProjection: ERPProjection) {
 
 function onLedPixelateChange() {
   bundle.mediaMaterial.setLedPixelate(params.ledPixelateEnabled, params.ledCountX, params.ledCountY);
+}
+
+function onDisplaySpecChange() {
+  syncDisplaySpecFromParams();
 }
 
 /** The "屏幕位置几何校正" toggle changed — see ERPMaskMaterial.ts `setWarpToReferenceEye` doc
@@ -1275,6 +1332,8 @@ function exportSeatCSV() {
 }
 
 function exportConfigJSON() {
+  syncCfgFromParams();
+  syncDisplaySpecFromParams();
   const payload = {
     exportedAt: new Date().toISOString(),
     venueConfig: cfg,
@@ -1669,7 +1728,7 @@ function exportAdjustedVideo() {
   const scratch = document.createElement("canvas");
   scratch.width = sourceWidth;
   scratch.height = sourceHeight;
-  const fps = 30;
+  const fps = Math.max(1, params.signalFrameRateFps);
   const stream = output.captureStream(fps);
   const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
     .find((type) => MediaRecorder.isTypeSupported(type));
@@ -1750,6 +1809,7 @@ const guiHandle = createGUIPanel({
   onLedPixelateChange,
   onContentWarpChange,
   onPlacementModeChange,
+  onDisplaySpecChange,
   onProjectionChange,
   onToggleLayer,
   onRunBatchAnalysis: runBatchAnalysis,

@@ -84,12 +84,49 @@ export interface ERPConfig {
   placeholderWidth: number;
 }
 
+/** LED vendor/display specification carried with the previs configuration. These values are
+ * engineering inputs for validation and handoff; V1 does not claim to reproduce the exact
+ * optical/electrical behavior of a physical LED processor. */
+export interface LEDDisplaySpec {
+  pixelPitchMm: number;
+  packageType: string;
+  mountingMethod: string;
+  contrastRatio: number;
+  whiteBalanceBrightnessNits: number;
+  refreshRateHz: number;
+  grayscaleBits: number;
+  surfaceReflectancePct: number;
+  colorTemperatureMinK: number;
+  colorTemperatureMaxK: number;
+  averagePowerWPerM2: number;
+  maximumPowerWPerM2: number;
+  horizontalViewingAngleDeg: number;
+  verticalViewingAngleDeg: number;
+  ledLifetimeHours: number;
+}
+
+/** Delivery/signals metadata that affects content preparation and A/V handoff. */
+export interface SignalSpec {
+  videoFrameRateFps: number;
+  scanMode: string;
+  bitDepth: number;
+  chromaSubsampling: string;
+  colorGamut: string;
+  gamma: number;
+  audioContainer: string;
+  audioChannels: string;
+  audioFormat: string;
+  loudnessLufs: number;
+}
+
 export interface VenueConfig {
   mediaPlane: MediaPlaneConfig;
   stage: StageConfig;
   audience: AudienceConfig;
   building: BuildingConfig;
   erp: ERPConfig;
+  led: LEDDisplaySpec;
+  signal: SignalSpec;
 }
 
 /**
@@ -139,6 +176,35 @@ export function createDefaultVenueConfig(): VenueConfig {
     erp: {
       aspect: 2,
       placeholderWidth: 4096,
+    },
+    led: {
+      pixelPitchMm: 3.9,
+      packageType: "1R1G1B",
+      mountingMethod: "磁吸安装，模组带防坠绳",
+      contrastRatio: 5000,
+      whiteBalanceBrightnessNits: 500,
+      refreshRateHz: 7680,
+      grayscaleBits: 15,
+      surfaceReflectancePct: 1.5,
+      colorTemperatureMinK: 5500,
+      colorTemperatureMaxK: 9300,
+      averagePowerWPerM2: 79,
+      maximumPowerWPerM2: 199,
+      horizontalViewingAngleDeg: 160,
+      verticalViewingAngleDeg: 160,
+      ledLifetimeHours: 100001,
+    },
+    signal: {
+      videoFrameRateFps: 30,
+      scanMode: "待供应商确认",
+      bitDepth: 10,
+      chromaSubsampling: "4:2:2",
+      colorGamut: "待确认",
+      gamma: 2.2,
+      audioContainer: "WebM",
+      audioChannels: "2.0",
+      audioFormat: "待确认",
+      loudnessLufs: -23,
     },
   };
 }

@@ -84,6 +84,31 @@ export interface GUIParams {
   /** 修改模式（可拖拽 + 滑杆改参数）/ 预演模式（拖拽 handle 隐藏，滑杆仍可改参数）。
    *  外屏/观众席/舞台永远只能滑杆调，不受这个开关影响。 */
   placementMode: "edit" | "preview";
+  ledPixelPitchMm: number;
+  ledPackageType: string;
+  ledMountingMethod: string;
+  ledContrastRatio: number;
+  ledBrightnessNits: number;
+  ledRefreshRateHz: number;
+  ledGrayscaleBits: number;
+  ledReflectancePct: number;
+  ledColorTempMinK: number;
+  ledColorTempMaxK: number;
+  ledAveragePowerWPerM2: number;
+  ledMaximumPowerWPerM2: number;
+  ledViewingAngleH: number;
+  ledViewingAngleV: number;
+  ledLifetimeHours: number;
+  signalFrameRateFps: number;
+  signalScanMode: string;
+  signalBitDepth: number;
+  signalChroma: string;
+  signalColorGamut: string;
+  signalGamma: number;
+  signalAudioContainer: string;
+  signalAudioChannels: string;
+  signalAudioFormat: string;
+  signalLoudnessLufs: number;
 }
 
 export interface GUIPanelDeps {
@@ -111,6 +136,7 @@ export interface GUIPanelDeps {
   onContentWarpChange: () => void;
   /** 修改模式 / 预演模式切换了——main.ts 负责隐藏/显示 3D 拖拽 handle、更新模式状态与外观。 */
   onPlacementModeChange: () => void;
+  onDisplaySpecChange: () => void;
   /** The 投影类型 dropdown changed. Separate from `onContentParamsChange` because switching
    *  projection also re-seeds hFov/vFov to a sane default for the NEW mode — see
    *  main.ts `onProjectionChange`. */
@@ -301,6 +327,35 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
   analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（WebM）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
+
+  const ledSpec = gui.addFolder("LED 设备规格");
+  ledSpec.add(p, "ledPixelPitchMm", 0.1, 20, 0.01).name("物理点间距（mm）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledPackageType").name("LED 封装").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledMountingMethod").name("模组固定方式").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledContrastRatio", 1, 100000, 1).name("对比度").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledBrightnessNits", 0, 5000, 1).name("白平衡亮度（nits）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledRefreshRateHz", 1, 20000, 1).name("刷新频率（Hz）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledGrayscaleBits", 1, 24, 1).name("灰度位深（bit）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledReflectancePct", 0, 100, 0.1).name("表面反光率（%）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledColorTempMinK", 1000, 20000, 100).name("色温下限（K）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledColorTempMaxK", 1000, 20000, 100).name("色温上限（K）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledAveragePowerWPerM2", 0, 1000, 1).name("平均功耗（W/m²）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledMaximumPowerWPerM2", 0, 2000, 1).name("最大功耗（W/m²）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledViewingAngleH", 0, 180, 1).name("水平可视角（°）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledViewingAngleV", 0, 180, 1).name("垂直可视角（°）").onChange(deps.onDisplaySpecChange);
+  ledSpec.add(p, "ledLifetimeHours", 0, 200000, 1000).name("LED 寿命（小时）").onChange(deps.onDisplaySpecChange);
+
+  const signalSpec = gui.addFolder("视频 / 音频信号规格");
+  signalSpec.add(p, "signalFrameRateFps", 1, 240, 0.01).name("视频帧率（FPS）").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalScanMode").name("扫描方式").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalBitDepth", 1, 32, 1).name("位深（bit）").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalChroma").name("色度采样").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalColorGamut").name("色域").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalGamma", 0.1, 5, 0.01).name("Gamma").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalAudioContainer").name("音频封装").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalAudioChannels").name("音频声道").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalAudioFormat").name("音频规格").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "signalLoudnessLufs", -60, 0, 0.1).name("响度（LUFS）").onChange(deps.onDisplaySpecChange);
 
   const refreshContentControllers = () => {
     for (const c of contentControllers) c.updateDisplay();
