@@ -4,7 +4,7 @@ import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { createDefaultVenueConfig } from "./core/VenueConfig";
 import { buildERPSphereGeometry, mediaPlaneDomeRadius, mediaPlaneShapeLabel } from "./core/MediaPlaneGeometry";
-import { buildVenueGroup, audienceSeatPosition } from "./core/VenueGeometry";
+import { buildVenueGroup, audienceSeatWorldPosition } from "./core/VenueGeometry";
 import { buildDiagnosticsLayers, buildContentOriginMarker, buildEyePositionMarker, buildRayDiagram } from "./diagnostics/DiagnosticsOverlay";
 import { buildScene, SceneBundle } from "./scene/SceneBuilder";
 import { computeCameraPresets, CameraPreset } from "./scene/CameraPresets";
@@ -108,8 +108,9 @@ const params: GUIParams = {
   radius: cfg.mediaPlane.radius,
   curvature: cfg.mediaPlane.curvature,
   centerHeight: cfg.mediaPlane.centerHeight,
-  // 内屏（Media Plane）水平偏移。X 被锁定在座位中轴线，Z 仍可通过 GUI 和拖拽调整。
+  // 内屏（Media Plane）水平偏移。X 固定在外球幕中心线，Z 仍可通过 GUI 和拖拽调整。
   centerOffsetX: cfg.mediaPlane.centerOffsetX,
+  audienceOffsetX: cfg.audience.offsetX,
   centerOffsetZ: cfg.mediaPlane.centerOffsetZ,
   // 内屏俯仰角（仰角）——绕局部 X 轴的刚体旋转，正值抬高正前方（面向舞台一侧）的仰角。见
   // core/VenueConfig.ts MediaPlaneConfig.tiltDeg 与 docs/SCREEN_DECOUPLING_DESIGN.md。
@@ -122,6 +123,7 @@ const params: GUIParams = {
   opacity: 1,
   stageWidth: cfg.stage.width,
   stageDepth: cfg.stage.depth,
+  stageVisible: cfg.stage.visible,
   audienceInner: cfg.audience.innerRadius,
   audienceOuter: cfg.audience.outerRadius,
   eyeHeight: cfg.audience.eyeHeight,
@@ -216,14 +218,11 @@ function applyVisibilityFromParams() {
 applyVisibilityFromParams();
 
 function syncCfgFromParams() {
-  // Keep the inner dome's centerline aligned to the seating bowl's centerline. The audience is
-  // built symmetrically around world X=0 (see VenueGeometry.ts audienceSeatPosition), so X is no
-  // longer an editable placement degree of freedom; movement is limited to height and front/back.
-  params.centerOffsetX = 0;
   cfg.mediaPlane.radius = params.radius;
   cfg.mediaPlane.curvature = params.curvature;
   cfg.mediaPlane.centerHeight = params.centerHeight;
   cfg.mediaPlane.centerOffsetX = 0;
+  cfg.audience.offsetX = params.audienceOffsetX;
   cfg.mediaPlane.centerOffsetZ = params.centerOffsetZ;
   cfg.mediaPlane.tiltDeg = params.tiltDeg;
   cfg.building.centerHeight = params.buildingCenterHeight;
@@ -235,6 +234,7 @@ function syncCfgFromParams() {
   ];
   cfg.stage.width = params.stageWidth;
   cfg.stage.depth = params.stageDepth;
+  cfg.stage.visible = params.stageVisible;
   cfg.audience.innerRadius = params.audienceInner;
   cfg.audience.outerRadius = params.audienceOuter;
   cfg.audience.riseHeight = params.riseHeight;
@@ -288,7 +288,11 @@ function updateStats() {
   const offsetH = Math.hypot(cfg.mediaPlane.centerOffsetX, cfg.mediaPlane.centerOffsetZ);
   const domeRadius = mediaPlaneDomeRadius(cfg.mediaPlane.curvature);
   const shape = mediaPlaneShapeLabel(cfg.mediaPlane.radius, cfg.mediaPlane.curvature);
-  statsBar.innerHTML = `面积估算：<b>${area.toFixed(0)} m²</b><br/>球面覆盖率：<b>${coverage.toFixed(1)}%</b><br/>形态：<b>${shape}</b> · X'Y'圆形截面半径：<b>${cfg.mediaPlane.radius.toFixed(1)} m</b> · Z'穹顶半径：<b>${domeRadius.toFixed(1)} m</b><br/>曲率：<b>${cfg.mediaPlane.curvature.toFixed(1)} 1/km</b><br/>球心高度：<b>${cfg.mediaPlane.centerHeight.toFixed(1)} m</b><br/>内屏水平偏移：<b>${offsetH.toFixed(1)} m</b>（X 轴锁定）`;
+  const relativeX = cfg.mediaPlane.centerOffsetX;
+  const relativeY = cfg.mediaPlane.centerHeight - cfg.building.centerHeight;
+  const relativeZ = cfg.mediaPlane.centerOffsetZ;
+  const radiusDelta = cfg.mediaPlane.radius - cfg.building.shellRadius;
+  statsBar.innerHTML = `面积估算：<b>${area.toFixed(0)} m²</b><br/>球面覆盖率：<b>${coverage.toFixed(1)}%</b><br/>形态：<b>${shape}</b> · X'Y'圆形截面半径：<b>${cfg.mediaPlane.radius.toFixed(1)} m</b> · Z'穹顶半径：<b>${domeRadius.toFixed(1)} m</b><br/>曲率：<b>${cfg.mediaPlane.curvature.toFixed(1)} 1/km</b><br/>球心高度：<b>${cfg.mediaPlane.centerHeight.toFixed(1)} m</b><br/>内屏水平偏移：<b>${offsetH.toFixed(1)} m</b><br/>相对外球幕位置：<b>X ${relativeX.toFixed(1)} m · Y ${relativeY.toFixed(1)} m · Z ${relativeZ.toFixed(1)} m</b><br/>观众席+舞台 X 偏移：<b>${cfg.audience.offsetX.toFixed(1)} m</b><br/>相对半径：<b>${radiusDelta >= 0 ? "+" : ""}${radiusDelta.toFixed(1)} m</b> · 相对俯仰：<b>${cfg.mediaPlane.tiltDeg.toFixed(1)}°</b>`;
 }
 
 /** Content reference origin = dome center (cfg.mediaPlane's full 3D center, including the
@@ -386,6 +390,7 @@ function applyMediaPlaneTransformOnly() {
   bundle.diagnostics.innerAxesHelper.rotation.copy(bundle.mediaPlaneMesh.rotation);
   updateContentOriginMarkerPosition();
   updatePlacementHandles();
+  updateStats();
   applyContentWarp();
 }
 
@@ -482,6 +487,7 @@ function onVenueChange() {
   // when the media plane itself doesn't need a rebuild below (the correction still needs to track a
   // moved audience reference seat).
   applyContentWarp();
+  updateStats();
 
 }
 
@@ -995,7 +1001,7 @@ function selectSeat(instanceId: number) {
 
   isFreeOrbit = false;
   applyVisibilityFromParams();
-  const seatFloorPos = audienceSeatPosition(meta.azDeg, meta.radius, cfg.audience);
+  const seatFloorPos = audienceSeatWorldPosition(meta.azDeg, meta.radius, cfg);
   const eye = seatFloorPos.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const { domeCenter, seatTarget, referencePoint, centralEye } = getSeatReferenceFrame();
 
@@ -1246,8 +1252,8 @@ window.addEventListener("pointermove", (ev) => {
   // forward direction (you'd need a pixel right at the edge of an extremely wide FOV), so there's no
   // near-horizon blowup to guard against — motion stays confined to exactly what's visible on
   // screen ("拖拽应该只能在当前的2D屏幕上进行，不能有前后的变化"), never runs away in depth. X is
-  // intentionally discarded below so the inner dome centerline stays aligned with the seating
-  // centerline; the circle handle only updates height and front/back offset.
+  // intentionally discarded below so the circle handle continues to update only height and
+  // front/back offset; lateral X placement remains a precise GUI-slider setting.
   placementRaycaster.setFromCamera(placementNDCFromEvent(ev), camera);
   const viewDir = new THREE.Vector3();
   camera.getWorldDirection(viewDir);
@@ -1260,7 +1266,6 @@ window.addEventListener("pointermove", (ev) => {
     Number.isFinite(dragPlaneHit.z) &&
     dragPlaneHit.length() <= shellGuardRadius
   ) {
-    params.centerOffsetX = 0;
     params.centerHeight = dragPlaneHit.y;
     params.centerOffsetZ = dragPlaneHit.z;
     applyPlacementDragTick();

@@ -55,8 +55,14 @@ export function audienceSeatPosition(azimuthDeg: number, radius: number, cfg: Ve
   return new THREE.Vector3(radius * Math.sin(a), floorHeight(radius, cfg), radius * Math.cos(a));
 }
 
+/** World-space seat position including the audience bowl's lateral offset. */
+export function audienceSeatWorldPosition(azimuthDeg: number, radius: number, cfg: VenueConfig): THREE.Vector3 {
+  return audienceSeatPosition(azimuthDeg, radius, cfg.audience).add(new THREE.Vector3(cfg.audience.offsetX, 0, 0));
+}
+
 function buildStage(cfg: VenueConfig): { object: THREE.Object3D; platform: THREE.Mesh } {
   const group = new THREE.Group();
+  group.position.x = cfg.audience.offsetX;
   const centerZ = -(cfg.stage.frontOffset + cfg.stage.depth / 2);
 
   const platform = new THREE.Mesh(
@@ -80,6 +86,7 @@ function buildAudience(
   cfg: VenueConfig
 ): { object: THREE.Object3D; floorTopAtOuter: number; seatInstancedMesh: THREE.InstancedMesh; seatMeta: SeatMeta[] } {
   const group = new THREE.Group();
+  group.position.x = cfg.audience.offsetX;
   const { rows } = cfg.audience;
   const azSteps = 48;
   const halfAngle = AUDIENCE_FAN_HALF_ANGLE_DEG;
@@ -236,6 +243,7 @@ export function buildVenueGroup(cfg: VenueConfig): VenueGroup {
   const { object: rearControl, box: rearControlBox } = buildRearControlArea(cfg);
   const shell = buildShell(cfg);
 
+  stage.visible = cfg.stage.visible;
   group.add(stage, audience, rearControl, shell);
 
   const dispose = () => {
@@ -253,7 +261,7 @@ export function buildVenueGroup(cfg: VenueConfig): VenueGroup {
     stageTopY: cfg.stage.height,
     seatInstancedMesh,
     seatMeta,
-    occluderMeshes: [platform, seatInstancedMesh, rearControlBox],
+    occluderMeshes: [...(cfg.stage.visible ? [platform] : []), seatInstancedMesh, rearControlBox],
     dispose,
   };
 }

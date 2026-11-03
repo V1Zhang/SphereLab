@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { VenueConfig } from "../core/VenueConfig";
-import { audienceSeatPosition } from "../core/VenueGeometry";
+import { audienceSeatWorldPosition } from "../core/VenueGeometry";
 
 /**
  * Standard audience viewpoints, treated as the V1 acceptance cases the brief asks for. Covers the
@@ -28,22 +28,22 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
   const centralTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ);
 
   // Front Row: closest to the stage, low in the rake — the tightest, most "under the wrap" view.
-  const frontSeat = audienceSeatPosition(0, cfg.audience.innerRadius, cfg.audience);
+  const frontSeat = audienceSeatWorldPosition(0, cfg.audience.innerRadius, cfg);
   const frontEye = frontSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const frontTarget = new THREE.Vector3(0, mediaRadius * 0.15, stageCenterZ);
 
   // Rear Row: back of the bowl, looking forward at the stage (distinct from Rear Look-Up, which
   // turns around to check coverage behind/above instead).
-  const rearRowSeat = audienceSeatPosition(0, cfg.audience.outerRadius, cfg.audience);
+  const rearRowSeat = audienceSeatWorldPosition(0, cfg.audience.outerRadius, cfg);
   const rearRowEye = rearRowSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const rearRowTarget = new THREE.Vector3(0, mediaRadius * 0.25, stageCenterZ);
 
   // Left / Right Side: off-centerline, mid-bowl, still facing roughly toward the stage — checks
   // the mask's side (yaw ~90°) coverage from an actual seat rather than head-on.
   const sideRadius = THREE.MathUtils.lerp(cfg.audience.innerRadius, cfg.audience.outerRadius, 0.4);
-  const leftSeat = audienceSeatPosition(-45, sideRadius, cfg.audience);
+  const leftSeat = audienceSeatWorldPosition(-45, sideRadius, cfg);
   const leftEye = leftSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
-  const rightSeat = audienceSeatPosition(45, sideRadius, cfg.audience);
+  const rightSeat = audienceSeatWorldPosition(45, sideRadius, cfg);
   const rightEye = rightSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const sideTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ);
 

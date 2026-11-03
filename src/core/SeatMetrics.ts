@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { MaskControlPoint, VenueConfig } from "./VenueConfig";
 import { isInsideMask } from "./ScreenMask";
 import { directionToYawPitch } from "../utils/SphericalMath";
-import { SeatMeta, audienceSeatPosition } from "./VenueGeometry";
+import { SeatMeta, audienceSeatWorldPosition } from "./VenueGeometry";
 
 /**
  * Per-seat viewpoint math for the "click a seat to preview its view" feature (main.ts
@@ -179,7 +179,7 @@ export function runBatchSeatAnalysis(
   centralEye: THREE.Vector3,
 ): BatchSeatAnalysis {
   const samples: SeatSample[] = seatMeta.map((meta) => {
-    const floorPos = audienceSeatPosition(meta.azDeg, meta.radius, cfg.audience);
+    const floorPos = audienceSeatWorldPosition(meta.azDeg, meta.radius, cfg);
     const eye = floorPos.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
     const forward = seatTarget.clone().sub(eye).normalize();
     const { coverageFraction } = computeSeatCoverage(eye, forward, domeCenter, cfg.mediaPlane.radius, cfg.mediaPlane.maskControlPoints);

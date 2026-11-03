@@ -50,11 +50,15 @@ export interface StageConfig {
   width: number;
   depth: number;
   height: number;
+  /** Whether the stage is rendered in the venue preview. */
+  visible: boolean;
   /** Distance of the stage's front edge from world origin, along -Z. */
   frontOffset: number;
 }
 
 export interface AudienceConfig {
+  /** Lateral offset of the audience bowl from the venue centerline, in meters. */
+  offsetX: number;
   innerRadius: number;
   outerRadius: number;
   rows: number;
@@ -155,9 +159,11 @@ export function createDefaultVenueConfig(): VenueConfig {
       width: 32,
       depth: 12,
       height: 1.2,
+      visible: true,
       frontOffset: 12,
     },
     audience: {
+      offsetX: 0,
       innerRadius: 5,
       outerRadius: 28,
       rows: 16,

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { VenueConfig } from "../core/VenueConfig";
-import { audienceSeatPosition } from "../core/VenueGeometry";
+import { audienceSeatWorldPosition } from "../core/VenueGeometry";
 import { sampleBoundaryCurve } from "../core/ScreenMask";
 import { yawPitchToDirection } from "../utils/SphericalMath";
 
@@ -251,7 +251,7 @@ function buildAudienceMarkers(cfg: VenueConfig): THREE.Object3D {
     { label: "右侧代表位置", azDeg: 45, radius: midRadius, color: "#c58aff" },
   ];
   for (const marker of representativePositions) {
-    const position = audienceSeatPosition(marker.azDeg, marker.radius, cfg.audience);
+    const position = audienceSeatWorldPosition(marker.azDeg, marker.radius, cfg);
     const point = new THREE.Mesh(
       new THREE.SphereGeometry(0.45, 16, 12),
       new THREE.MeshBasicMaterial({ color: marker.color }),

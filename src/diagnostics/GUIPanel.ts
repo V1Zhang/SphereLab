@@ -22,10 +22,11 @@ export interface GUIParams {
   radius: number;
   curvature: number;
   centerHeight: number;
-  // 内屏（Media Plane）水平偏移。X 被锁定在座位中轴线，Z 仍可用滑杆/拖拽调整；内屏还可以
+  // 内屏（Media Plane）水平偏移。X 固定在外球幕中心线，Z 仍可用滑杆/拖拽调整；内屏还可以
   // 在 3D 视口里直接拖拽高度和前后位置，见 main.ts
   // "内屏摆放：拖拽移动中心" 与 docs/SCREEN_DECOUPLING_DESIGN.md。
   centerOffsetX: number;
+  audienceOffsetX: number;
   centerOffsetZ: number;
   /** 内屏俯仰角（仰角）——绕局部 X 轴的刚体旋转，度，正值抬高正前方仰角。三个"中心/半径"字段是
    *  纯平移，这个是内屏第一个真正的旋转自由度，见 core/VenueConfig.ts MediaPlaneConfig.tiltDeg。 */
@@ -37,6 +38,7 @@ export interface GUIParams {
   opacity: number;
   stageWidth: number;
   stageDepth: number;
+  stageVisible: boolean;
   audienceInner: number;
   audienceOuter: number;
   eyeHeight: number;
@@ -245,7 +247,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
       deps.onPlacementModeChange();
     });
   // 内屏摆放——只在修改模式下可拖拽：橙色球（圆圈）贴着屏幕平面拖动球心高度和前后位置（Y/Z；
-  // X 轴锁定在座位中轴线，见
+  // X 轴仍由上面的滑杆精确控制，见
   // main.ts pointermove 里的"camera-facing drag plane"实现——不是老版本那种水平面求交，不会有
   // 前后跳动/看起来变大变小的问题），橙色圆锥（三角，跟圆圈放在一起，不在球面边缘）拖动改俯仰角/
   // 仰角（tiltDeg，绕局部 X 轴的刚体旋转）。半径只能用滑杆调，没有对应的拖拽 handle（半径拖拽
@@ -281,8 +283,10 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   mask.add(p, "opacity", 0, 1, 0.01).name("球幕不透明度").onChange(deps.onMaskUniformsChange);
 
   const venue = gui.addFolder("场馆几何");
+  venue.add(p, "audienceOffsetX", -20, 20, 0.5).name("观众席+舞台左右偏移 X（m）").onChange(deps.onVenueChange);
   venue.add(p, "stageWidth", 8, 40, 1).name("舞台宽度（m）").onChange(deps.onVenueChange);
   venue.add(p, "stageDepth", 4, 20, 1).name("舞台进深（m）").onChange(deps.onVenueChange);
+  venue.add(p, "stageVisible").name("显示前方舞台").onChange(deps.onVenueChange);
   venue.add(p, "audienceInner", 4, 20, 0.5).name("观众席内径（m）").onChange(deps.onVenueChange);
   venue.add(p, "audienceOuter", 12, 40, 0.5).name("观众席外径（m）").onChange(deps.onVenueChange);
   venue.add(p, "riseHeight", 0, 15, 0.5).name("观众席抬升高度（m）").onChange(deps.onVenueChange);
