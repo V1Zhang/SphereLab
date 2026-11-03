@@ -1,8 +1,8 @@
-# SphereLab Desktop Software
+# SphereLab Linux Desktop Wrapper
 
 This directory is an isolated desktop wrapper for SphereLab. It does not change the root Vite app, docs, deployment config, or existing `dist/` output.
 
-The wrapper uses Electron to package the already-built web app into a desktop application. At runtime it serves the packaged static files from a local in-app HTTP server and opens them in an application window.
+This wrapper is Linux-only. It packages the current web UI for local control, but it is not the server GPU renderer. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md).
 
 ## Directory Boundary
 
@@ -73,7 +73,6 @@ This copies the latest root `dist/` into `software/app-dist/` before packaging.
 
 ## Notes
 
-- This is not a backend server product. The local HTTP server runs only inside the desktop app process.
-- Users do not need to open a browser.
-- File loading, rendering, analysis, and exports still run locally on the user's machine.
-- If you deploy the root web version separately, this desktop wrapper does not affect it.
+- This wrapper does not provide server-side GPU rendering; use `server/` for that runtime.
+- The Electron package is Linux-only and remains a local control/compatibility shell.
+- The root web version is independent and is not changed by server runtime work.

@@ -1,0 +1,11 @@
+{
+  "name": "spherelab-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Linux/NVIDIA server runtime for SphereLab GPU rendering",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "health": "node src/index.mjs --health"
+  }
+}

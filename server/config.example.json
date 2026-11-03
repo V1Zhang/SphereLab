@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "port": 8787,
+  "media": {
+    "source": "/data/media/demo.mp4",
+    "ffmpegVideoCodec": "h264_nvdec"
+  },
+  "renderer": {
+    "command": "/opt/spherelab/bin/spherelab-renderer",
+    "width": 3840,
+    "height": 2160,
+    "fps": 30
+  },
+  "webrtc": {
+    "iceServers": []
+  }
+}

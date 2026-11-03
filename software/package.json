@@ -26,19 +26,6 @@
         "to": "app-dist"
       }
     ],
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "category": "public.app-category.graphics-design"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    },
     "linux": {
       "target": [
         "AppImage",
