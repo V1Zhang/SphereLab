@@ -3,8 +3,6 @@ import { loadConfig } from "./config.mjs";
 import { probeMedia } from "./media/ffmpeg.mjs";
 import { rendererStatus, requireRenderer } from "./renderer/contract.mjs";
 
-const config = await loadConfig();
-
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
@@ -16,7 +14,9 @@ async function readJson(req) {
   return body ? JSON.parse(body) : {};
 }
 
-const server = http.createServer(async (req, res) => {
+async function start() {
+  const config = await loadConfig();
+  const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/health") {
       json(res, 200, { ok: true, service: "spherelab-server", renderer: rendererStatus(config) });
@@ -49,12 +49,18 @@ const server = http.createServer(async (req, res) => {
     const status = error.code === "renderer_not_configured" ? 503 : 400;
     json(res, status, { error: error.code || "request_failed", message: error.message });
   }
-});
-
-if (process.argv.includes("--health")) {
-  console.log(JSON.stringify({ ok: true, service: "spherelab-server", renderer: rendererStatus(config) }, null, 2));
-} else {
-  server.listen(config.port, config.host, () => {
-    console.log(`SphereLab server listening on ${config.host}:${config.port}`);
   });
+
+  if (process.argv.includes("--health")) {
+    console.log(JSON.stringify({ ok: true, service: "spherelab-server", renderer: rendererStatus(config) }, null, 2));
+  } else {
+    server.listen(config.port, config.host, () => {
+      console.log(`SphereLab server listening on ${config.host}:${config.port}`);
+    });
+  }
 }
+
+start().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
