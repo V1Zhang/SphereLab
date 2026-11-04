@@ -32,6 +32,8 @@ docker build -t spherelab-server .
 docker run --gpus all --rm -p 8787:8787 spherelab-server
 ```
 
+The image installs Node.js 20 because the server runtime uses modern Node ESM APIs; the Ubuntu 22.04 default Node.js package is too old.
+
 ## Renderer contract
 
 Copy `config.example.json` to `config.json` and set `renderer.command` to the native Linux renderer adapter. The adapter will consume a `VenueConfig` session and expose rendered frames to the WebRTC transport. This is the next server-side implementation boundary; the web build is not used by this runtime.
