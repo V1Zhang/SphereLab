@@ -1,7 +1,19 @@
+import fs from "node:fs";
+
 export function rendererStatus(config) {
   const renderer = config.renderer || {};
+  let executable = false;
+  if (renderer.command) {
+    try {
+      executable = fs.statSync(renderer.command).isFile();
+      fs.accessSync(renderer.command, fs.constants.X_OK);
+    } catch {
+      executable = false;
+    }
+  }
   return {
     configured: Boolean(renderer.command),
+    executable,
     command: renderer.command || null,
     output: {
       width: Number(renderer.width || 3840),
@@ -13,9 +25,10 @@ export function rendererStatus(config) {
 }
 
 export function requireRenderer(config) {
-  if (!config.renderer || !config.renderer.command) {
+  const status = rendererStatus(config);
+  if (!status.executable) {
     const error = new Error("Linux/NVIDIA renderer adapter is not configured");
-    error.code = "renderer_not_configured";
+    error.code = "renderer_adapter_unavailable";
     throw error;
   }
 }

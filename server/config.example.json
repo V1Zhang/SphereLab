@@ -8,6 +8,9 @@
   },
   "renderer": {
     "command": "/opt/spherelab/bin/spherelab-renderer",
+    "args": [],
+    "cwd": "/opt/spherelab",
+    "env": {},
     "width": 3840,
     "height": 2160,
     "fps": 30

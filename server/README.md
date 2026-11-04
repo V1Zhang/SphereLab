@@ -11,7 +11,7 @@ The target runtime is:
 
 ## Current status
 
-The service entry point, configuration loading, FFmpeg/ffprobe media probe, renderer status API and session boundary are in place. The actual GPU renderer and WebRTC media transport are host adapters and must be installed/configured on the target Linux NVIDIA machine. The service reports this explicitly rather than silently falling back to browser rendering.
+The service entry point, configuration loading, FFmpeg/ffprobe media probe, 16K tile validation, renderer process lifecycle and signaling boundary are in place. The actual CUDA/EGL/WebRTC renderer is a separate native Linux executable. The Node service starts it as a child process and exchanges JSONL commands/events; it reports an unavailable adapter instead of silently falling back to browser rendering.
 
 ## Run
 
@@ -48,6 +48,28 @@ curl -X POST http://127.0.0.1:8787/api/media/tile-manifest \\
 
 The current service validates the tile asset. GPU composition and WebRTC output are the next renderer-adapter stage.
 
+To also check that the first frame's 16 tiles exist:
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/media/tile-manifest \\
+  -H 'content-type: application/json' \\
+  -d '{"path":"/data/media/tile-manifest.json","checkFiles":true,"frame":0}'
+```
+
 ## Renderer contract
 
-Copy `config.example.json` to `config.json` and set `renderer.command` to the native Linux renderer adapter. The adapter will consume a `VenueConfig` session and expose rendered frames to the WebRTC transport. This is the next server-side implementation boundary; the web build is not used by this runtime.
+Copy `config.example.json` to `config.json` and set `renderer.command` to the native Linux renderer adapter. The adapter protocol is JSONL:
+
+- Node sends `{"type":"start", "sessionId", "source", "manifest", "venue", "output", "webrtc"}` on stdin.
+- The renderer emits `{"type":"ready"}` when the GPU pipeline is initialized.
+- The renderer emits `{"type":"offer", "sdp", ...}` and subsequent ICE events.
+- Node forwards browser signaling with `POST /api/render/session/:id/signal`.
+
+Session endpoints:
+
+- `POST /api/render/session` starts a native renderer session.
+- `GET /api/render/session/:id` reads state and recent events.
+- `POST /api/render/session/:id/signal` forwards WebRTC signaling.
+- `DELETE /api/render/session/:id` stops the renderer.
+
+The web build is not used by this runtime.
