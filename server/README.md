@@ -11,7 +11,7 @@ The target runtime is:
 
 ## Current status
 
-The service entry point, configuration loading, FFmpeg/ffprobe media probe, 16K tile validation, renderer process lifecycle and signaling boundary are in place. The actual CUDA/EGL/WebRTC renderer is a separate native Linux executable. The Node service starts it as a child process and exchanges JSONL commands/events; it reports an unavailable adapter instead of silently falling back to browser rendering. Preview mode is `native-tile`: the 16384×16384 source remains at native resolution and is transported as 4096×4096 tiles rather than downsampled to a single 4K/8K frame.
+The service entry point, configuration loading, FFmpeg/ffprobe media probe, 16K tile validation, renderer process lifecycle and signaling boundary are in place. The native Linux renderer executable is built inside the Docker image and starts with NVIDIA GPU and tile-manifest checks. Preview mode is `native-tile`: the 16384×16384 source remains at native resolution and is transported as 4096×4096 tiles rather than downsampled to a single 4K/8K frame. The WebRTC tile transport is reported explicitly by the native process until its media path is connected.
 
 ## Run
 
