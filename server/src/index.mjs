@@ -1,6 +1,7 @@
 import http from "node:http";
 import { loadConfig } from "./config.mjs";
 import { probeMedia } from "./media/ffmpeg.mjs";
+import { readTileManifest } from "./media/tile-manifest.mjs";
 import { rendererStatus, requireRenderer } from "./renderer/contract.mjs";
 
 function json(res, status, body) {
@@ -32,6 +33,18 @@ async function start() {
       const payload = await readJson(req);
       const source = payload.source || config.media.source;
       json(res, 200, { source, probe: await probeMedia(source) });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/media/tile-manifest") {
+      const payload = await readJson(req);
+      const file = payload.path || config.media.manifest;
+      if (!file) {
+        const error = new Error("tile manifest path is required");
+        error.code = "tile_manifest_path_required";
+        throw error;
+      }
+      json(res, 200, await readTileManifest(file));
       return;
     }
 

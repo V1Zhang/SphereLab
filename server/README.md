@@ -34,6 +34,20 @@ docker run --gpus all --rm -p 8787:8787 spherelab-server
 
 The image installs Node.js 20 because the server runtime uses modern Node ESM APIs; the Ubuntu 22.04 default Node.js package is too old.
 
+## 16K tile input
+
+The high-resolution path uses a manifest instead of one monolithic `16384x16384` HEVC stream. Copy `tile-manifest.example.json` to the media directory as `tile-manifest.json`, then place the 4x4 `4096x4096` tile frames under the declared pattern.
+
+Validate the manifest:
+
+```bash
+curl -X POST http://127.0.0.1:8787/api/media/tile-manifest \\
+  -H 'content-type: application/json' \\
+  -d '{"path":"/data/media/tile-manifest.json"}'
+```
+
+The current service validates the tile asset. GPU composition and WebRTC output are the next renderer-adapter stage.
+
 ## Renderer contract
 
 Copy `config.example.json` to `config.json` and set `renderer.command` to the native Linux renderer adapter. The adapter will consume a `VenueConfig` session and expose rendered frames to the WebRTC transport. This is the next server-side implementation boundary; the web build is not used by this runtime.

@@ -3,6 +3,7 @@
   "port": 8787,
   "media": {
     "source": "/data/media/demo.mp4",
+    "manifest": "/data/media/tile-manifest.json",
     "ffmpegVideoCodec": "h264_nvdec"
   },
   "renderer": {
