@@ -16,6 +16,9 @@
     "fps": 30
   },
   "webrtc": {
-    "iceServers": []
+    "iceServers": [],
+    "previewMode": "native-tile",
+    "tileTransport": "webrtc-datachannel",
+    "preserveSourceResolution": true
   }
 }

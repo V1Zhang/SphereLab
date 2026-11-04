@@ -7,11 +7,11 @@ The target runtime is:
 - Linux + NVIDIA GPU
 - FFmpeg/GStreamer for media ingest and hardware decode
 - GPU off-screen renderer for venue, dome and mask rendering
-- WebRTC transport for interactive preview
+- Native-resolution tile transport for interactive preview
 
 ## Current status
 
-The service entry point, configuration loading, FFmpeg/ffprobe media probe, 16K tile validation, renderer process lifecycle and signaling boundary are in place. The actual CUDA/EGL/WebRTC renderer is a separate native Linux executable. The Node service starts it as a child process and exchanges JSONL commands/events; it reports an unavailable adapter instead of silently falling back to browser rendering.
+The service entry point, configuration loading, FFmpeg/ffprobe media probe, 16K tile validation, renderer process lifecycle and signaling boundary are in place. The actual CUDA/EGL/WebRTC renderer is a separate native Linux executable. The Node service starts it as a child process and exchanges JSONL commands/events; it reports an unavailable adapter instead of silently falling back to browser rendering. Preview mode is `native-tile`: the 16384×16384 source remains at native resolution and is transported as 4096×4096 tiles rather than downsampled to a single 4K/8K frame.
 
 ## Run
 
@@ -60,9 +60,9 @@ curl -X POST http://127.0.0.1:8787/api/media/tile-manifest \\
 
 Copy `config.example.json` to `config.json` and set `renderer.command` to the native Linux renderer adapter. The adapter protocol is JSONL:
 
-- Node sends `{"type":"start", "sessionId", "source", "manifest", "venue", "output", "webrtc"}` on stdin.
+- Node sends `{"type":"start", "sessionId", "source", "manifest", "venue", "output", "webrtc", "preview"}` on stdin. `preview.mode` is `native-tile` and `preview.preserveSourceResolution` is always true.
 - The renderer emits `{"type":"ready"}` when the GPU pipeline is initialized.
-- The renderer emits `{"type":"offer", "sdp", ...}` and subsequent ICE events.
+- The renderer emits `{"type":"tile", "frame", "column", "row", "width":4096, "height":4096, "payload":...}` or a WebRTC tile-track offer, followed by ICE events.
 - Node forwards browser signaling with `POST /api/render/session/:id/signal`.
 
 Session endpoints:

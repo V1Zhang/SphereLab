@@ -113,7 +113,17 @@ export class RendererAdapter {
       manifest: request.manifest || this.config.media?.manifest || null,
       venue: request.venue || null,
       output: status.output,
-      webrtc: this.config.webrtc || {},
+      webrtc: {
+        ...(this.config.webrtc || {}),
+        previewMode: "native-tile",
+        preserveSourceResolution: true,
+      },
+      preview: {
+        mode: "native-tile",
+        preserveSourceResolution: true,
+        canvas: request.canvas || null,
+        tile: request.tile || null,
+      },
     });
     return this.publicSession(session);
   }
