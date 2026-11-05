@@ -786,6 +786,12 @@ manifestFileInput.accept = "application/json,.json";
 manifestFileInput.style.display = "none";
 document.body.appendChild(manifestFileInput);
 
+const configFileInput = document.createElement("input");
+configFileInput.type = "file";
+configFileInput.accept = "application/json,.json";
+configFileInput.style.display = "none";
+document.body.appendChild(configFileInput);
+
 function applyManifest(m: ERPManifest) {
   params.contentProjection = m.projection;
   params.contentHFovDeg = m.hFovDeg;
@@ -815,6 +821,18 @@ manifestFileInput.addEventListener("change", () => {
       contentStatusEl.innerHTML = `<span class="err">清单不是合法 JSON：${err instanceof Error ? err.message : String(err)}</span>`;
       return;
     }
+    // The exported configuration uses the same JSON extension but wraps the manifest together
+    // with venueConfig. Accept that envelope here too, so a user can re-import an exported file
+    // from either JSON loader without accidentally treating it as a bare manifest.
+    if (isRecord(raw) && isRecord(raw.venueConfig) && isRecord(raw.contentManifest)) {
+      try {
+        applyConfigPayload(raw, file.name);
+      } catch (err) {
+        contentStatusEl.innerHTML = `<span class="err">配置 ${file.name} 无效：${err instanceof Error ? err.message : String(err)}</span>`;
+      }
+      return;
+    }
+
     const result = parseManifest(raw);
     if (!result.ok) {
       // 缺投影类型 / 字段非法都在这里截住——不会退回到"按宽高比猜一个"，而是保留当前参数不变。
@@ -832,6 +850,127 @@ manifestFileInput.addEventListener("change", () => {
 
 function requestManifestFile() {
   manifestFileInput.click();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeVenueConfig(raw: unknown): ReturnType<typeof createDefaultVenueConfig> | null {
+  if (!isRecord(raw)) return null;
+  const defaults = createDefaultVenueConfig();
+  const sections = ["mediaPlane", "stage", "audience", "building", "erp", "led", "signal"] as const;
+  if (sections.some((section) => !isRecord(raw[section]))) return null;
+
+  // Keep the schema owned by VenueConfig while allowing future optional fields to fall back to
+  // defaults. The exported file contains every current field, so importing it preserves the
+  // exact values; unknown fields are intentionally ignored for forward compatibility.
+  return {
+    ...defaults,
+    mediaPlane: {
+      ...defaults.mediaPlane,
+      ...(raw.mediaPlane as Record<string, unknown>),
+      maskControlPoints: Array.isArray((raw.mediaPlane as Record<string, unknown>).maskControlPoints)
+        ? (raw.mediaPlane as Record<string, unknown>).maskControlPoints
+        : defaults.mediaPlane.maskControlPoints,
+    },
+    stage: { ...defaults.stage, ...(raw.stage as Record<string, unknown>) },
+    audience: { ...defaults.audience, ...(raw.audience as Record<string, unknown>) },
+    building: { ...defaults.building, ...(raw.building as Record<string, unknown>) },
+    erp: { ...defaults.erp, ...(raw.erp as Record<string, unknown>) },
+    led: { ...defaults.led, ...(raw.led as Record<string, unknown>) },
+    signal: { ...defaults.signal, ...(raw.signal as Record<string, unknown>) },
+  } as ReturnType<typeof createDefaultVenueConfig>;
+}
+
+function applyVenueConfigToParams() {
+  params.radius = cfg.mediaPlane.radius;
+  params.curvature = cfg.mediaPlane.curvature;
+  params.centerHeight = cfg.mediaPlane.centerHeight;
+  params.centerOffsetX = cfg.mediaPlane.centerOffsetX;
+  params.centerOffsetZ = cfg.mediaPlane.centerOffsetZ;
+  params.tiltDeg = cfg.mediaPlane.tiltDeg;
+  params.featherDeg = cfg.mediaPlane.maskFeatherDeg;
+  params.maskFront = cfg.mediaPlane.maskControlPoints[0]?.minPitchDeg ?? params.maskFront;
+  params.maskSide = cfg.mediaPlane.maskControlPoints[1]?.minPitchDeg ?? params.maskSide;
+  params.maskRear = cfg.mediaPlane.maskControlPoints[2]?.minPitchDeg ?? params.maskRear;
+  params.stageWidth = cfg.stage.width;
+  params.stageDepth = cfg.stage.depth;
+  params.stageVisible = cfg.stage.visible;
+  params.audienceOffsetX = cfg.audience.offsetX;
+  params.audienceInner = cfg.audience.innerRadius;
+  params.audienceOuter = cfg.audience.outerRadius;
+  params.eyeHeight = cfg.audience.eyeHeight;
+  params.riseHeight = cfg.audience.riseHeight;
+  params.shellRadius = cfg.building.shellRadius;
+  params.buildingCenterHeight = cfg.building.centerHeight;
+  params.ledPixelPitchMm = cfg.led.pixelPitchMm;
+  params.ledPackageType = cfg.led.packageType;
+  params.ledMountingMethod = cfg.led.mountingMethod;
+  params.ledContrastRatio = cfg.led.contrastRatio;
+  params.ledBrightnessNits = cfg.led.whiteBalanceBrightnessNits;
+  params.ledRefreshRateHz = cfg.led.refreshRateHz;
+  params.ledGrayscaleBits = cfg.led.grayscaleBits;
+  params.ledReflectancePct = cfg.led.surfaceReflectancePct;
+  params.ledColorTempMinK = cfg.led.colorTemperatureMinK;
+  params.ledColorTempMaxK = cfg.led.colorTemperatureMaxK;
+  params.ledAveragePowerWPerM2 = cfg.led.averagePowerWPerM2;
+  params.ledMaximumPowerWPerM2 = cfg.led.maximumPowerWPerM2;
+  params.ledViewingAngleH = cfg.led.horizontalViewingAngleDeg;
+  params.ledViewingAngleV = cfg.led.verticalViewingAngleDeg;
+  params.ledLifetimeHours = cfg.led.ledLifetimeHours;
+  params.signalFrameRateFps = cfg.signal.videoFrameRateFps;
+  params.signalScanMode = cfg.signal.scanMode;
+  params.signalBitDepth = cfg.signal.bitDepth;
+  params.signalChroma = cfg.signal.chromaSubsampling;
+  params.signalColorGamut = cfg.signal.colorGamut;
+  params.signalGamma = cfg.signal.gamma;
+  params.signalAudioContainer = cfg.signal.audioContainer;
+  params.signalAudioChannels = cfg.signal.audioChannels;
+  params.signalAudioFormat = cfg.signal.audioFormat;
+  params.signalLoudnessLufs = cfg.signal.loudnessLufs;
+}
+
+function applyConfigPayload(raw: Record<string, unknown>, filename: string) {
+  if (!isRecord(raw.venueConfig) || !isRecord(raw.contentManifest)) {
+    throw new Error('缺少 "venueConfig" 或 "contentManifest" 字段');
+  }
+  const importedCfg = mergeVenueConfig(raw.venueConfig);
+  if (!importedCfg) throw new Error("venueConfig 字段不完整或不是对象");
+  const manifestResult = parseManifest(raw.contentManifest);
+  if (!manifestResult.ok) throw new Error(`contentManifest 无效：${manifestResult.error}`);
+
+  Object.assign(cfg, importedCfg);
+  applyVenueConfigToParams();
+  applyManifest(manifestResult.manifest);
+  onMediaPlaneGeometryChange();
+  onVenueChange();
+  guiHandle.refreshAllControllers();
+  contentStatusEl.innerHTML = `已载入配置：<b>${filename}</b>`;
+}
+
+configFileInput.addEventListener("change", () => {
+  const file = configFileInput.files?.[0];
+  configFileInput.value = "";
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const raw: unknown = JSON.parse(String(reader.result));
+      if (!isRecord(raw)) throw new Error("配置文件必须是 JSON 对象");
+      applyConfigPayload(raw, file.name);
+    } catch (err) {
+      contentStatusEl.innerHTML = `<span class="err">配置 ${file.name} 无效：${err instanceof Error ? err.message : String(err)}</span>`;
+    }
+  };
+  reader.onerror = () => {
+    contentStatusEl.innerHTML = `<span class="err">读取 ${file.name} 失败</span>`;
+  };
+  reader.readAsText(file);
+});
+
+function requestConfigFile() {
+  configFileInput.click();
 }
 
 // ---------------------------------------------------------------------------
@@ -1810,6 +1949,7 @@ const guiHandle = createGUIPanel({
   onResetPlaceholder: resetPlaceholder,
   onTogglePlayback: togglePlayback,
   onRequestManifestFile: requestManifestFile,
+  onRequestConfigFile: requestConfigFile,
   onContentParamsChange,
   onLedPixelateChange,
   onContentWarpChange,

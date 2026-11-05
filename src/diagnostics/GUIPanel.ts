@@ -128,6 +128,9 @@ export interface GUIPanelDeps {
    *  src/content/ERPManifest.ts `parseManifest`); rejected (missing/unsupported `projection`,
    *  bad field) manifests leave the current params untouched. */
   onRequestManifestFile: () => void;
+  /** Opens a file picker for the JSON produced by "导出当前配置（JSON）" and restores both
+   *  venueConfig and contentManifest from that same envelope. */
+  onRequestConfigFile: () => void;
   /** Any 素材参数 slider/dropdown changed — geometric mapping (FOV/offset/flip/origin) applies
    *  live to the shader; colorSpace applies to the currently-loaded texture. Both are cheap, so
    *  one combined handler covers every field instead of six near-identical callbacks. */
@@ -166,6 +169,8 @@ export interface GUIPanelHandle {
   /** Call after programmatically overwriting `params.content*` (e.g. a manifest.json just loaded)
    *  so the sliders/dropdowns reflect the new values — lil-gui doesn't watch the bound object. */
   refreshContentControllers: () => void;
+  /** Refreshes every visible controller after a configuration file replaces multiple params. */
+  refreshAllControllers: () => void;
 }
 
 export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
@@ -327,12 +332,13 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   const analysis = gui.addFolder("分析 / 导出");
   analysis.add({ run: deps.onRunBatchAnalysis }, "run").name("运行全场座位分析");
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
+  analysis.add({ loadCfg: deps.onRequestConfigFile }, "loadCfg").name("载入当前配置（JSON）…");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
   analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（WebM）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
 
-  const ledSpec = gui.addFolder("LED 设备规格");
+  const ledSpec = gui.addFolder("LED 设备规格").close();
   ledSpec.add(p, "ledPixelPitchMm", 0.1, 20, 0.01).name("物理点间距（mm）").onChange(deps.onDisplaySpecChange);
   ledSpec.add(p, "ledPackageType").name("LED 封装").onChange(deps.onDisplaySpecChange);
   ledSpec.add(p, "ledMountingMethod").name("模组固定方式").onChange(deps.onDisplaySpecChange);
@@ -349,7 +355,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   ledSpec.add(p, "ledViewingAngleV", 0, 180, 1).name("垂直可视角（°）").onChange(deps.onDisplaySpecChange);
   ledSpec.add(p, "ledLifetimeHours", 0, 200000, 1000).name("LED 寿命（小时）").onChange(deps.onDisplaySpecChange);
 
-  const signalSpec = gui.addFolder("视频 / 音频信号规格");
+  const signalSpec = gui.addFolder("视频 / 音频信号规格").close();
   signalSpec.add(p, "signalFrameRateFps", 1, 240, 0.01).name("视频帧率（FPS）").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalScanMode").name("扫描方式").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalBitDepth", 1, 32, 1).name("位深（bit）").onChange(deps.onDisplaySpecChange);
@@ -365,5 +371,8 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
     for (const c of contentControllers) c.updateDisplay();
     for (const c of contentOffsetControllers) c.updateDisplay();
   };
-  return { gui, refreshContentControllers };
+  const refreshAllControllers = () => {
+    for (const c of gui.controllersRecursive()) c.updateDisplay();
+  };
+  return { gui, refreshContentControllers, refreshAllControllers };
 }
