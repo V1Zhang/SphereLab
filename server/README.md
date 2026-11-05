@@ -38,6 +38,15 @@ The image installs Node.js 20 because the server runtime uses modern Node ESM AP
 
 The high-resolution path uses a manifest instead of one monolithic `16384x16384` HEVC stream. Copy `tile-manifest.example.json` to the media directory as `tile-manifest.json`, then place the 4x4 `4096x4096` tile frames under the declared pattern.
 
+For an end-to-end smoke test without production media, use the PNG manifest and generator:
+
+```bash
+cp tile-manifest.png.example.json /data/media/tile-manifest.json
+bash scripts/generate-test-tiles.sh /data/media
+```
+
+The generator creates 16 valid 4096×4096 PNG tiles. It is only a transport/GPU pipeline test, not production visual content.
+
 Validate the manifest:
 
 ```bash

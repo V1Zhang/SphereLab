@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "canvas": { "width": 16384, "height": 16384 },
+  "tile": { "width": 4096, "height": 4096, "columns": 4, "rows": 4 },
+  "frameRate": 1,
+  "frameCount": 1,
+  "format": "png-sequence",
+  "pattern": "frames/frame_%06d/tile_%02d_%02d.png"
+}
