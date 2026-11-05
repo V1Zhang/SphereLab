@@ -23,7 +23,7 @@ RUN rm -f /etc/apt/sources.list.d/cuda*.list \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     gstreamer1.0-libav libegl1 libgl1 libgles2 build-essential \
   && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-  && apt-get install -y --no-install-recommends nodejs \
+  && apt-get install -y --no-install-recommends nodejs npm \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
