@@ -4,6 +4,8 @@ import { probeMedia } from "./media/ffmpeg.mjs";
 import { readTileManifest } from "./media/tile-manifest.mjs";
 import { rendererStatus, requireRenderer } from "./renderer/contract.mjs";
 import { RendererAdapter } from "./renderer/adapter.mjs";
+import { TileWebRtcSessions } from "./renderer/webrtc.mjs";
+import fs from "node:fs/promises";
 
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -19,8 +21,15 @@ async function readJson(req) {
 async function start() {
   const config = await loadConfig();
   const renderer = new RendererAdapter(config);
+  const tileWebRtc = new TileWebRtcSessions(config);
   const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === "GET" && req.url === "/preview") {
+      const html = await fs.readFile(new URL("../public/native-tile-preview.html", import.meta.url), "utf8");
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(html);
+      return;
+    }
     if (req.method === "GET" && req.url === "/health") {
       json(res, 200, { ok: true, service: "spherelab-server", renderer: renderer.status() });
       return;
@@ -54,6 +63,11 @@ async function start() {
       requireRenderer(config);
       const payload = await readJson(req);
       json(res, 201, renderer.createSession(payload));
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/render/webrtc") {
+      json(res, 201, await tileWebRtc.create(await readJson(req)));
       return;
     }
 

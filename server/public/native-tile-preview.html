@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SphereLab native 16K tile preview</title>
+<style>html,body{margin:0;background:#080a0d;color:#dce3ed;font:14px system-ui}body{display:grid;place-items:center;height:100vh}canvas{width:min(96vw,1400px);height:auto;background:#111}#status{position:fixed;top:12px;left:12px}</style>
+<div id="status">connecting…</div><canvas id="canvas" width="16384" height="16384"></canvas>
+<script>
+const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d'), status = document.querySelector('#status');
+const pc = new RTCPeerConnection(); const channel = pc.createDataChannel('native-tiles');
+let pending = null, pendingParts = [], pendingBytes = 0;
+channel.binaryType = 'arraybuffer';
+channel.onopen = () => status.textContent = 'WebRTC connected · native 16K tile mode';
+channel.onmessage = async ({data}) => {
+  if (typeof data === 'string') {
+    const msg = JSON.parse(data);
+    if (msg.type === 'tile') { pending = msg; pendingParts = []; pendingBytes = 0; }
+    if (msg.type === 'frame-end') status.textContent = `frame ${msg.frame} received · 16384×16384 native tiles`;
+    return;
+  }
+  if (!pending) return;
+  pendingParts.push(new Uint8Array(data)); pendingBytes += data.byteLength;
+  if (pendingBytes < pending.bytes) return;
+  const blob = new Blob(pendingParts, {type: pending.mime}); const bitmap = await createImageBitmap(blob);
+  ctx.drawImage(bitmap, pending.column * pending.width, pending.row * pending.height, pending.width, pending.height);
+  bitmap.close(); pending = null;
+};
+(async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+  const response = await fetch('/api/render/webrtc', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({offer:pc.localDescription})});
+  if (!response.ok) throw new Error(await response.text()); const result = await response.json(); await pc.setRemoteDescription(result.answer);
+})().catch(error => { status.textContent = error.message; });
+</script>
