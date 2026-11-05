@@ -32,4 +32,5 @@ RUN chmod +x /opt/spherelab/bin/spherelab-renderer
 
 ENV SPHERELAB_PORT=8787
 EXPOSE 8787
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD node src/index.mjs --health >/dev/null || exit 1
 CMD ["node", "src/index.mjs"]

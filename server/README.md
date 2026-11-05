@@ -47,6 +47,12 @@ bash scripts/generate-test-tiles.sh /data/media
 
 The generator creates 16 valid 4096×4096 PNG tiles. It is only a transport/GPU pipeline test, not production visual content.
 
+After the container is running, run the bundled deployment checks from the host:
+
+```bash
+bash scripts/verify-deployment.sh
+```
+
 Validate the manifest:
 
 ```bash
