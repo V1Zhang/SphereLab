@@ -29,21 +29,21 @@ jobs:
           version: 9.15.4
 
       - name: Install root dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter spherelab
 
       - name: Build web app
-        run: pnpm run build
+        run: pnpm --filter spherelab run build
 
       - name: Install desktop dependencies
         working-directory: software
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --filter spherelab-desktop
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           npm_config_electron_mirror: https://npmmirror.com/mirrors/electron/
 
       - name: Build desktop package
         working-directory: software
-        run: pnpm run build
+        run: pnpm --filter spherelab-desktop run build
 
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
