@@ -24,19 +24,20 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
   // Central Audience uses the literal reference eye position (D-06 / brief default), not the
   // rake-derived floor height — the brief pins this to an exact world-space point so the default
   // view is reproducible regardless of how the seating-bowl rake is tuned elsewhere.
-  const centralEye = new THREE.Vector3(0, cfg.audience.eyeHeight, cfg.audience.centralReferenceRadius);
-  const centralTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ);
+  const centralFloor = audienceSeatWorldPosition(0, cfg.audience.centralReferenceRadius, cfg);
+  const centralEye = centralFloor.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
+  const centralTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ + cfg.audience.offsetY);
 
   // Front Row: closest to the stage, low in the rake — the tightest, most "under the wrap" view.
   const frontSeat = audienceSeatWorldPosition(0, cfg.audience.innerRadius, cfg);
   const frontEye = frontSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
-  const frontTarget = new THREE.Vector3(0, mediaRadius * 0.15, stageCenterZ);
+  const frontTarget = new THREE.Vector3(0, mediaRadius * 0.15, stageCenterZ + cfg.audience.offsetY);
 
   // Rear Row: back of the bowl, looking forward at the stage (distinct from Rear Look-Up, which
   // turns around to check coverage behind/above instead).
   const rearRowSeat = audienceSeatWorldPosition(0, cfg.audience.outerRadius, cfg);
   const rearRowEye = rearRowSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
-  const rearRowTarget = new THREE.Vector3(0, mediaRadius * 0.25, stageCenterZ);
+  const rearRowTarget = new THREE.Vector3(0, mediaRadius * 0.25, stageCenterZ + cfg.audience.offsetY);
 
   // Left / Right Side: off-centerline, mid-bowl, still facing roughly toward the stage — checks
   // the mask's side (yaw ~90°) coverage from an actual seat rather than head-on.
@@ -45,7 +46,7 @@ export function computeCameraPresets(cfg: VenueConfig): CameraPreset[] {
   const leftEye = leftSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
   const rightSeat = audienceSeatWorldPosition(45, sideRadius, cfg);
   const rightEye = rightSeat.clone().add(new THREE.Vector3(0, cfg.audience.eyeHeight, 0));
-  const sideTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ);
+  const sideTarget = new THREE.Vector3(0, mediaRadius * 0.2, stageCenterZ + cfg.audience.offsetY);
 
   return [
     {

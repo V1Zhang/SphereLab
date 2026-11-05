@@ -57,12 +57,15 @@ export function audienceSeatPosition(azimuthDeg: number, radius: number, cfg: Ve
 
 /** World-space seat position including the audience bowl's lateral offset. */
 export function audienceSeatWorldPosition(azimuthDeg: number, radius: number, cfg: VenueConfig): THREE.Vector3 {
-  return audienceSeatPosition(azimuthDeg, radius, cfg.audience).add(new THREE.Vector3(cfg.audience.offsetX, 0, 0));
+  // The venue UI's logical Y axis is the front/back axis. In Three.js world coordinates that
+  // axis is Z; world Y remains the vertical axis.
+  return audienceSeatPosition(azimuthDeg, radius, cfg.audience).add(
+    new THREE.Vector3(0, 0, cfg.audience.offsetY),
+  );
 }
 
 function buildStage(cfg: VenueConfig): { object: THREE.Object3D; platform: THREE.Mesh } {
   const group = new THREE.Group();
-  group.position.x = cfg.audience.offsetX;
   const centerZ = -(cfg.stage.frontOffset + cfg.stage.depth / 2);
 
   const platform = new THREE.Mesh(
@@ -86,7 +89,6 @@ function buildAudience(
   cfg: VenueConfig
 ): { object: THREE.Object3D; floorTopAtOuter: number; seatInstancedMesh: THREE.InstancedMesh; seatMeta: SeatMeta[] } {
   const group = new THREE.Group();
-  group.position.x = cfg.audience.offsetX;
   const { rows } = cfg.audience;
   const azSteps = 48;
   const halfAngle = AUDIENCE_FAN_HALF_ANGLE_DEG;
@@ -237,6 +239,9 @@ function buildShell(cfg: VenueConfig): THREE.Object3D {
 export function buildVenueGroup(cfg: VenueConfig): VenueGroup {
   const group = new THREE.Group();
   group.name = "venue";
+  // Keep all non-screen venue elements in one shared transform so audience, front stage and
+  // rear venue area always move together.
+  group.position.set(0, 0, cfg.audience.offsetY);
 
   const { object: stage, platform } = buildStage(cfg);
   const { object: audience, seatInstancedMesh, seatMeta } = buildAudience(cfg);

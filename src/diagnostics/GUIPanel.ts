@@ -26,7 +26,7 @@ export interface GUIParams {
   // 在 3D 视口里直接拖拽高度和前后位置，见 main.ts
   // "内屏摆放：拖拽移动中心" 与 docs/SCREEN_DECOUPLING_DESIGN.md。
   centerOffsetX: number;
-  audienceOffsetX: number;
+  audienceOffsetY: number;
   centerOffsetZ: number;
   /** 内屏俯仰角（仰角）——绕局部 X 轴的刚体旋转，度，正值抬高正前方仰角。三个"中心/半径"字段是
    *  纯平移，这个是内屏第一个真正的旋转自由度，见 core/VenueConfig.ts MediaPlaneConfig.tiltDeg。 */
@@ -185,6 +185,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   // 载入一份等距柱状（ERP）全景视频/图片直接贴到球幕；未加载时显示程序生成的校准占位图。
   const content = gui.addFolder("素材 / 占位图").open();
   content.add({ load: deps.onRequestFile }, "load").name("载入素材（视频 / 图片 / EXR / HDR）");
+  content.add({ loadManifest: deps.onRequestManifestFile }, "loadManifest").name("载入素材清单（JSON）…");
   content.add({ reset: deps.onResetPlaceholder }, "reset").name("恢复占位校准图");
   content.add({ toggle: deps.onTogglePlayback }, "toggle").name("播放 / 暂停视频");
 
@@ -192,7 +193,6 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   // 会按该格式解释，便于把 ERP、鱼眼、柱面等离线变形结果投到同一个 3D 球幕上比较。
   const manifest = gui.addFolder("素材参数（清单）");
   manifest.add(p, "contentProjection", [...SUPPORTED_PROJECTIONS]).name("投影类型").onChange(deps.onProjectionChange);
-  manifest.add({ load: deps.onRequestManifestFile }, "load").name("载入素材清单（JSON）…");
   const contentControllers: Controller[] = [
     manifest.add(p, "contentHFovDeg", 1, 360, 1).name("水平视场 FOV（°）").onChange(deps.onContentParamsChange),
     manifest.add(p, "contentVFovDeg", 1, 180, 1).name("垂直视场 FOV（°）").onChange(deps.onContentParamsChange),
@@ -262,7 +262,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
     mask.add(p, "radius", 10, 60, 0.5).name("水平截面半径（m）").onChange(deps.onMediaPlaneGeometryChange),
     mask.add(p, "curvature", 2, 100, 0.1).name("穹顶曲率（1/km）").onChange(deps.onMediaPlaneCurvatureChange),
     mask.add(p, "centerHeight", 0, 30, 0.5).name("球心高度（m，或拖圆圈）").onChange(deps.onMediaPlaneGeometryChange),
-    mask.add(p, "centerOffsetZ", -20, 20, 0.5).name("球心前后偏移 Z（m，或拖圆圈）").onChange(deps.onMediaPlaneGeometryChange),
+    mask.add(p, "centerOffsetZ", -20, 20, 0.5).name("球心前后偏移 Y（m，或拖圆圈）").onChange(deps.onMediaPlaneGeometryChange),
     mask.add(p, "tiltDeg", -80, 80, 1).name("俯仰角 / 仰角（°，或拖三角）").onChange(deps.onMediaPlaneGeometryChange),
   ];
   mask
@@ -288,7 +288,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   mask.add(p, "opacity", 0, 1, 0.01).name("球幕不透明度").onChange(deps.onMaskUniformsChange);
 
   const venue = gui.addFolder("场馆几何");
-  venue.add(p, "audienceOffsetX", -20, 20, 0.5).name("观众席+舞台左右偏移 X（m）").onChange(deps.onVenueChange);
+  venue.add(p, "audienceOffsetY", -20, 20, 0.5).name("观众席+前后舞台偏移 Y（m）").onChange(deps.onVenueChange);
   venue.add(p, "stageWidth", 8, 40, 1).name("舞台宽度（m）").onChange(deps.onVenueChange);
   venue.add(p, "stageDepth", 4, 20, 1).name("舞台进深（m）").onChange(deps.onVenueChange);
   venue.add(p, "stageVisible").name("显示前方舞台").onChange(deps.onVenueChange);
@@ -332,7 +332,6 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   const analysis = gui.addFolder("分析 / 导出");
   analysis.add({ run: deps.onRunBatchAnalysis }, "run").name("运行全场座位分析");
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
-  analysis.add({ loadCfg: deps.onRequestConfigFile }, "loadCfg").name("载入当前配置（JSON）…");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
   analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（WebM）");

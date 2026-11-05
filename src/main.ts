@@ -110,7 +110,7 @@ const params: GUIParams = {
   centerHeight: cfg.mediaPlane.centerHeight,
   // 内屏（Media Plane）水平偏移。X 固定在外球幕中心线，Z 仍可通过 GUI 和拖拽调整。
   centerOffsetX: cfg.mediaPlane.centerOffsetX,
-  audienceOffsetX: cfg.audience.offsetX,
+  audienceOffsetY: cfg.audience.offsetY,
   centerOffsetZ: cfg.mediaPlane.centerOffsetZ,
   // 内屏俯仰角（仰角）——绕局部 X 轴的刚体旋转，正值抬高正前方（面向舞台一侧）的仰角。见
   // core/VenueConfig.ts MediaPlaneConfig.tiltDeg 与 docs/SCREEN_DECOUPLING_DESIGN.md。
@@ -222,7 +222,7 @@ function syncCfgFromParams() {
   cfg.mediaPlane.curvature = params.curvature;
   cfg.mediaPlane.centerHeight = params.centerHeight;
   cfg.mediaPlane.centerOffsetX = 0;
-  cfg.audience.offsetX = params.audienceOffsetX;
+  cfg.audience.offsetY = params.audienceOffsetY;
   cfg.mediaPlane.centerOffsetZ = params.centerOffsetZ;
   cfg.mediaPlane.tiltDeg = params.tiltDeg;
   cfg.building.centerHeight = params.buildingCenterHeight;
@@ -292,7 +292,7 @@ function updateStats() {
   const relativeY = cfg.mediaPlane.centerHeight - cfg.building.centerHeight;
   const relativeZ = cfg.mediaPlane.centerOffsetZ;
   const radiusDelta = cfg.mediaPlane.radius - cfg.building.shellRadius;
-  statsBar.innerHTML = `面积估算：<b>${area.toFixed(0)} m²</b><br/>球面覆盖率：<b>${coverage.toFixed(1)}%</b><br/>形态：<b>${shape}</b> · X'Y'圆形截面半径：<b>${cfg.mediaPlane.radius.toFixed(1)} m</b> · Z'穹顶半径：<b>${domeRadius.toFixed(1)} m</b><br/>曲率：<b>${cfg.mediaPlane.curvature.toFixed(1)} 1/km</b><br/>球心高度：<b>${cfg.mediaPlane.centerHeight.toFixed(1)} m</b><br/>内屏水平偏移：<b>${offsetH.toFixed(1)} m</b><br/>相对外球幕位置：<b>X ${relativeX.toFixed(1)} m · Y ${relativeY.toFixed(1)} m · Z ${relativeZ.toFixed(1)} m</b><br/>观众席+舞台 X 偏移：<b>${cfg.audience.offsetX.toFixed(1)} m</b><br/>相对半径：<b>${radiusDelta >= 0 ? "+" : ""}${radiusDelta.toFixed(1)} m</b> · 相对俯仰：<b>${cfg.mediaPlane.tiltDeg.toFixed(1)}°</b>`;
+  statsBar.innerHTML = `面积估算：<b>${area.toFixed(0)} m²</b><br/>球面覆盖率：<b>${coverage.toFixed(1)}%</b><br/>形态：<b>${shape}</b> · X'Y'圆形截面半径：<b>${cfg.mediaPlane.radius.toFixed(1)} m</b> · Z'穹顶半径：<b>${domeRadius.toFixed(1)} m</b><br/>曲率：<b>${cfg.mediaPlane.curvature.toFixed(1)} 1/km</b><br/>球心高度：<b>${cfg.mediaPlane.centerHeight.toFixed(1)} m</b><br/>内屏水平偏移：<b>${offsetH.toFixed(1)} m</b><br/>相对外球幕位置：<b>X ${relativeX.toFixed(1)} m · Y ${relativeY.toFixed(1)} m · Z ${relativeZ.toFixed(1)} m</b><br/>观众席+前后舞台 Y 轴前后偏移：<b>${cfg.audience.offsetY.toFixed(1)} m</b><br/>相对半径：<b>${radiusDelta >= 0 ? "+" : ""}${radiusDelta.toFixed(1)} m</b> · 相对俯仰：<b>${cfg.mediaPlane.tiltDeg.toFixed(1)}°</b>`;
 }
 
 /** Content reference origin = dome center (cfg.mediaPlane's full 3D center, including the
@@ -315,7 +315,9 @@ updateContentOriginMarkerPosition();
  *  to the same physical point. Recomputed fresh (cheap) rather than cached so it always reflects the
  *  current `cfg.audience.*` sliders. */
 function referenceEyeWorldPosition(): THREE.Vector3 {
-  return new THREE.Vector3(0, cfg.audience.eyeHeight, cfg.audience.centralReferenceRadius);
+  return audienceSeatWorldPosition(0, cfg.audience.centralReferenceRadius, cfg).add(
+    new THREE.Vector3(0, cfg.audience.eyeHeight, 0),
+  );
 }
 
 /** Pushes the media plane's current world position + rotation, and the (possibly just-changed)
@@ -472,6 +474,10 @@ function onMaskUniformsChange() {
 
 function onVenueChange() {
   syncCfgFromParams();
+  // Audience reference markers are built from the current venue geometry. Rebuild the diagnostics
+  // layer here as well, so the four front/rear/left/right markers follow seating moves and shape
+  // changes instead of remaining at their previous positions.
+  rebuildDiagnostics();
   bundle.scene.remove(bundle.venue.group);
   bundle.venue.dispose();
   bundle.venue = buildVenueGroup(cfg);
@@ -897,7 +903,7 @@ function applyVenueConfigToParams() {
   params.stageWidth = cfg.stage.width;
   params.stageDepth = cfg.stage.depth;
   params.stageVisible = cfg.stage.visible;
-  params.audienceOffsetX = cfg.audience.offsetX;
+  params.audienceOffsetY = cfg.audience.offsetY;
   params.audienceInner = cfg.audience.innerRadius;
   params.audienceOuter = cfg.audience.outerRadius;
   params.eyeHeight = cfg.audience.eyeHeight;
@@ -931,6 +937,31 @@ function applyVenueConfigToParams() {
   params.signalLoudnessLufs = cfg.signal.loudnessLufs;
 }
 
+function applyUIState(raw: unknown) {
+  if (!isRecord(raw)) return;
+  const booleanKeys = [
+    "showReferenceSphere", "showMediaPlane", "showNonScreenArea", "showBoundary", "showGrid",
+    "showCenterMarker", "showAxesHelper", "showInnerAxesHelper", "showContentOrigin", "showEyePosition",
+    "showRayDiagram", "showStageArrow", "showAudienceMarkers", "showVenue", "ledPixelateEnabled",
+    "contentWarpToEye",
+  ] as const;
+  for (const key of booleanKeys) {
+    if (typeof raw[key] === "boolean") params[key] = raw[key] as never;
+  }
+  if (typeof raw.opacity === "number" && Number.isFinite(raw.opacity)) {
+    params.opacity = THREE.MathUtils.clamp(raw.opacity, 0, 1);
+  }
+  if (typeof raw.ledCountX === "number" && Number.isFinite(raw.ledCountX)) {
+    params.ledCountX = Math.round(THREE.MathUtils.clamp(raw.ledCountX, 4, 4096));
+  }
+  if (typeof raw.ledCountY === "number" && Number.isFinite(raw.ledCountY)) {
+    params.ledCountY = Math.round(THREE.MathUtils.clamp(raw.ledCountY, 4, 2048));
+  }
+  if (raw.placementMode === "edit" || raw.placementMode === "preview") {
+    params.placementMode = raw.placementMode;
+  }
+}
+
 function applyConfigPayload(raw: Record<string, unknown>, filename: string) {
   if (!isRecord(raw.venueConfig) || !isRecord(raw.contentManifest)) {
     throw new Error('缺少 "venueConfig" 或 "contentManifest" 字段');
@@ -943,8 +974,14 @@ function applyConfigPayload(raw: Record<string, unknown>, filename: string) {
   Object.assign(cfg, importedCfg);
   applyVenueConfigToParams();
   applyManifest(manifestResult.manifest);
+  applyUIState(raw.uiState);
   onMediaPlaneGeometryChange();
   onVenueChange();
+  onLedPixelateChange();
+  applyMediaSolidLook();
+  onContentWarpChange();
+  onPlacementModeChange();
+  applyVisibilityFromParams();
   guiHandle.refreshAllControllers();
   contentStatusEl.innerHTML = `已载入配置：<b>${filename}</b>`;
 }
@@ -1127,7 +1164,7 @@ let seatPointerDown: { x: number; y: number } | null = null;
 function getSeatReferenceFrame() {
   const domeCenter = new THREE.Vector3(cfg.mediaPlane.centerOffsetX, cfg.mediaPlane.centerHeight, cfg.mediaPlane.centerOffsetZ);
   const stageCenterZ = -(cfg.stage.frontOffset + cfg.stage.depth / 2);
-  const seatTarget = new THREE.Vector3(0, cfg.mediaPlane.radius * 0.2, stageCenterZ);
+  const seatTarget = new THREE.Vector3(0, cfg.mediaPlane.radius * 0.2, stageCenterZ + cfg.audience.offsetY);
   const central = presets.find((p) => p.id === "central")!;
   const centralForward = central.target.clone().sub(central.position).normalize();
   const referencePoint = intersectDomeRay(central.position, centralForward, domeCenter, cfg.mediaPlane.radius) ?? central.target;
@@ -1491,6 +1528,29 @@ function exportConfigJSON() {
       vFlip: params.contentVFlip,
       colorSpace: params.contentColorSpace,
       originOffset: { x: params.contentOriginX, y: params.contentOriginY, z: params.contentOriginZ },
+    },
+    // Live preview/UI parameters that are not part of VenueConfig or the content manifest.
+    uiState: {
+      opacity: params.opacity,
+      showReferenceSphere: params.showReferenceSphere,
+      showMediaPlane: params.showMediaPlane,
+      showNonScreenArea: params.showNonScreenArea,
+      showBoundary: params.showBoundary,
+      showGrid: params.showGrid,
+      showCenterMarker: params.showCenterMarker,
+      showAxesHelper: params.showAxesHelper,
+      showInnerAxesHelper: params.showInnerAxesHelper,
+      showContentOrigin: params.showContentOrigin,
+      showEyePosition: params.showEyePosition,
+      showRayDiagram: params.showRayDiagram,
+      showStageArrow: params.showStageArrow,
+      showAudienceMarkers: params.showAudienceMarkers,
+      showVenue: params.showVenue,
+      ledPixelateEnabled: params.ledPixelateEnabled,
+      ledCountX: params.ledCountX,
+      ledCountY: params.ledCountY,
+      contentWarpToEye: params.contentWarpToEye,
+      placementMode: params.placementMode,
     },
   };
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `spherelab-config-${timestampForFilename()}.json`);

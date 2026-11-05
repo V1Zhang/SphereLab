@@ -265,7 +265,7 @@ function buildAudienceMarkers(cfg: VenueConfig): THREE.Object3D {
   }
 
   const stage = makeTextSprite("舞台", "#ff6b6b");
-  stage.position.set(0, cfg.stage.height + 3, -(cfg.stage.frontOffset + cfg.stage.depth / 2));
+  stage.position.set(0, cfg.stage.height + 3, -(cfg.stage.frontOffset + cfg.stage.depth / 2) + cfg.audience.offsetY);
   group.add(stage);
 
   return group;

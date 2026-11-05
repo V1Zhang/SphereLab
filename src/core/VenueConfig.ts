@@ -57,8 +57,9 @@ export interface StageConfig {
 }
 
 export interface AudienceConfig {
-  /** Lateral offset of the audience bowl from the venue centerline, in meters. */
-  offsetX: number;
+  /** Shared logical-Y front/back offset of the audience, front stage and rear venue area, in meters.
+   *  The current Three.js world mapping stores logical Y on world Z; world Y remains vertical. */
+  offsetY: number;
   innerRadius: number;
   outerRadius: number;
   rows: number;
@@ -163,7 +164,7 @@ export function createDefaultVenueConfig(): VenueConfig {
       frontOffset: 12,
     },
     audience: {
-      offsetX: 0,
+      offsetY: 0,
       innerRadius: 5,
       outerRadius: 28,
       rows: 16,
