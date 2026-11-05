@@ -3,10 +3,12 @@ FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS renderer-build
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /build
 RUN rm -f /etc/apt/sources.list.d/cuda*.list \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* \
   && sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list \
   && apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg build-essential \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
 COPY native ./native
 RUN mkdir -p /out \
   && nvcc -O2 -std=c++17 native/spherelab-renderer.cu -o /out/spherelab-renderer
@@ -17,14 +19,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /opt/spherelab
 
 RUN rm -f /etc/apt/sources.list.d/cuda*.list \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* \
   && sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gstreamer1.0-tools \
-    gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-    gstreamer1.0-libav libegl1 libgl1 libgles2 build-essential \
+  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
   && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
   && apt-get install -y --no-install-recommends nodejs npm \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
