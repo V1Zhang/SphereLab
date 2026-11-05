@@ -32,6 +32,24 @@ const seatInfoEl = document.getElementById("seat-info")!;
 // Filled in by runFullVenueAnalysis() (see "分析 / 导出" below) — stays empty/hidden until the
 // user runs the batch analysis at least once.
 const analysisInfoEl = document.getElementById("analysis-info")!;
+const nativePreviewToggle = document.getElementById("native-preview-toggle") as HTMLButtonElement | null;
+const nativePreviewDock = document.getElementById("native-preview-dock") as HTMLElement | null;
+const nativePreviewFrame = nativePreviewDock?.querySelector("iframe") as HTMLIFrameElement | null;
+
+// In the Linux desktop build the Electron shell passes the GPU server URL as a query parameter.
+// Keeping this integration in the main venue app means the editor and native 16K preview are one
+// application window; the web deployment remains unchanged because it does not provide this param.
+const desktopServerUrl = new URLSearchParams(window.location.search).get("desktopServer");
+if (desktopServerUrl && nativePreviewToggle && nativePreviewDock && nativePreviewFrame) {
+  const normalized = desktopServerUrl.replace(/\/$/, "");
+  nativePreviewFrame.src = `${normalized}/preview`;
+  nativePreviewToggle.classList.add("visible");
+  nativePreviewToggle.addEventListener("click", () => {
+    const visible = nativePreviewDock.classList.toggle("visible");
+    nativePreviewToggle.textContent = visible ? "关闭 16K 预览" : "16K 原生预览";
+    nativePreviewToggle.setAttribute("aria-expanded", String(visible));
+  });
+}
 
 // Left-stack collapse toggle: starts collapsed (index.html ships #top-left-stack with the
 // "collapsed" class already on it) so the description and live stats don't cover the viewport on

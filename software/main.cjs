@@ -6,7 +6,6 @@ const { pathToFileURL } = require("node:url");
 
 let server;
 let serverUrl;
-let previewWindow;
 
 function appDistDir() {
   if (app.isPackaged) {
@@ -133,31 +132,14 @@ async function createWindow() {
     return { action: "deny" };
   });
 
-  await win.loadURL(serverUrl);
-
-  const serverPreview = process.env.SPHERELAB_SERVER_URL;
-  if (serverPreview) {
-    const normalized = serverPreview.replace(/\/$/, "");
-    previewWindow = new BrowserWindow({
-      width: 1600,
-      height: 1000,
-      minWidth: 1024,
-      minHeight: 720,
-      title: "SphereLab native 16K tile preview",
-      backgroundColor: "#080a0d",
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-    previewWindow.removeMenu();
-    previewWindow.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
-      return { action: "deny" };
-    });
-    await previewWindow.loadURL(`${normalized}/preview`);
-  }
+  // Desktop builds default to the local NVIDIA server so the user can launch the AppImage from
+  // the desktop without first opening a terminal. An environment variable still allows a remote
+  // or non-default server during testing.
+  const serverPreview = process.env.SPHERELAB_SERVER_URL || "http://127.0.0.1:8787";
+  const appUrl = serverPreview
+    ? `${serverUrl}/?desktopServer=${encodeURIComponent(serverPreview)}`
+    : serverUrl;
+  await win.loadURL(appUrl);
 }
 
 app.whenReady().then(createWindow);

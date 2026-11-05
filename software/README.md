@@ -1,8 +1,8 @@
 # SphereLab Linux Desktop Wrapper
 
-This directory is an isolated desktop wrapper for SphereLab. It does not change the root Vite app, docs, deployment config, or existing `dist/` output.
+This directory contains the Linux desktop application for SphereLab. It packages the complete venue editor and, when a Linux/NVIDIA SphereLab server is available, exposes the native 16K tile preview inside the same application window.
 
-This wrapper is Linux-only. It packages the current web UI for local control, but it is not the server GPU renderer. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md).
+This wrapper is Linux-only. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md); the desktop application connects to it over localhost/WebRTC and does not open the preview in a separate browser window.
 
 ## Directory Boundary
 
@@ -85,4 +85,8 @@ To make the Linux desktop wrapper display the server's native-resolution tile pr
 SPHERELAB_SERVER_URL=http://127.0.0.1:8787 pnpm run start
 ```
 
-The wrapper keeps the normal local venue editor in the main window and opens `/preview` as a second software window. The preview window receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas. Without this variable it opens only the local venue editor.
+The main SphereLab window keeps the normal venue editor and shows a `16K 原生预览` button. The embedded preview receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas.
+
+Packaged AppImage builds use `http://127.0.0.1:8787` by default, so after the NVIDIA server container is running you can launch the application from the Linux desktop directly. Set `SPHERELAB_SERVER_URL` only when the renderer is on another address.
+
+The 16K source still needs to be prepared as a valid server-side tile manifest. The desktop app is the operator interface; the NVIDIA server performs decoding and GPU composition so the browser/Electron video decoder is not used for 16K HEVC.
