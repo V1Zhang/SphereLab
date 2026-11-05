@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
-project(spherelab_renderer LANGUAGES CXX)
+project(spherelab_renderer LANGUAGES CXX CUDA)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_executable(spherelab-renderer spherelab-renderer.cpp)
+add_executable(spherelab-renderer spherelab-renderer.cu)
+set_target_properties(spherelab-renderer PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)

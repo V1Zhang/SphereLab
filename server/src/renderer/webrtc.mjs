@@ -32,8 +32,9 @@ function waitForIceGathering(peer, timeoutMs = 5000) {
 }
 
 export class TileWebRtcSessions {
-  constructor(config) {
+  constructor(config, gpuRenderer = null) {
     this.config = config;
+    this.gpuRenderer = gpuRenderer;
     this.sessions = new Map();
   }
 
@@ -55,9 +56,10 @@ export class TileWebRtcSessions {
       error.code = "webrtc_png_tiles_required";
       throw error;
     }
+    const gpuSession = this.gpuRenderer?.createSession({ manifest: manifestPath, canvas: tileManifest.canvas, tile: tileManifest.tile }) || null;
     const peer = new RTCPeerConnection({ iceServers: this.config.webrtc?.iceServers || [] });
     const id = crypto.randomUUID();
-    const session = { id, peer, state: "negotiating", manifestPath, tileManifest, channel: null };
+    const session = { id, peer, state: "negotiating", manifestPath, tileManifest, channel: null, gpuSessionId: gpuSession?.id || null };
     this.sessions.set(id, session);
 
     peer.onDataChannel.subscribe((channel) => {
@@ -77,13 +79,14 @@ export class TileWebRtcSessions {
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
     await waitForIceGathering(peer);
-    return { id, state: session.state, answer: peer.localDescription };
+    return { id, state: session.state, gpuSessionId: session.gpuSessionId, answer: peer.localDescription };
   }
 
   async stop(id) {
     const session = this.sessions.get(id);
     if (!session) return false;
     await session.peer.close();
+    if (session.gpuSessionId) this.gpuRenderer?.stop(session.gpuSessionId);
     this.sessions.delete(id);
     return true;
   }
@@ -91,7 +94,7 @@ export class TileWebRtcSessions {
   get(id) {
     const session = this.sessions.get(id);
     if (!session) return null;
-    return { id: session.id, state: session.state, channelOpen: Boolean(session.channel) };
+    return { id: session.id, state: session.state, channelOpen: Boolean(session.channel), gpuSessionId: session.gpuSessionId };
   }
 
   async #sendFrame(session, frame) {

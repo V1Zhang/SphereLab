@@ -1,3 +1,14 @@
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04 AS renderer-build
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /build
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg build-essential \
+  && rm -rf /var/lib/apt/lists/*
+COPY native ./native
+RUN mkdir -p /out \
+  && nvcc -O2 -std=c++17 native/spherelab-renderer.cu -o /out/spherelab-renderer
+
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,11 +26,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src ./src
 COPY public ./public
-COPY native ./native
-
-RUN mkdir -p /opt/spherelab/bin \
-  && c++ -O2 -std=c++17 native/spherelab-renderer.cpp -o /opt/spherelab/bin/spherelab-renderer \
-  && chmod +x /opt/spherelab/bin/spherelab-renderer
+RUN mkdir -p /opt/spherelab/bin
+COPY --from=renderer-build /out/spherelab-renderer /opt/spherelab/bin/spherelab-renderer
+RUN chmod +x /opt/spherelab/bin/spherelab-renderer
 
 ENV SPHERELAB_PORT=8787
 EXPOSE 8787

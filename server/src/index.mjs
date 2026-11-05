@@ -21,7 +21,7 @@ async function readJson(req) {
 async function start() {
   const config = await loadConfig();
   const renderer = new RendererAdapter(config);
-  const tileWebRtc = new TileWebRtcSessions(config);
+  const tileWebRtc = new TileWebRtcSessions(config, renderer);
   const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && req.url === "/preview") {
