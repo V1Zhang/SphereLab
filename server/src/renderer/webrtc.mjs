@@ -17,6 +17,20 @@ function jsonMessage(value) {
   return JSON.stringify(value);
 }
 
+function waitForIceGathering(peer, timeoutMs = 5000) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { peer.iceGatheringStateChange.allUnsubscribe(); resolve(); }, timeoutMs);
+    peer.iceGatheringStateChange.subscribe((state) => {
+      if (state === "complete") {
+        clearTimeout(timer);
+        peer.iceGatheringStateChange.allUnsubscribe();
+        resolve();
+      }
+    });
+  });
+}
+
 export class TileWebRtcSessions {
   constructor(config) {
     this.config = config;
@@ -36,6 +50,11 @@ export class TileWebRtcSessions {
       throw error;
     }
     const tileManifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    if (tileManifest.format !== "png-sequence") {
+      const error = new Error("native DataChannel preview requires png-sequence tiles; use the native renderer for EXR input");
+      error.code = "webrtc_png_tiles_required";
+      throw error;
+    }
     const peer = new RTCPeerConnection({ iceServers: this.config.webrtc?.iceServers || [] });
     const id = crypto.randomUUID();
     const session = { id, peer, state: "negotiating", manifestPath, tileManifest, channel: null };
@@ -57,6 +76,7 @@ export class TileWebRtcSessions {
     await peer.setRemoteDescription(offer);
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
+    await waitForIceGathering(peer);
     return { id, state: session.state, answer: peer.localDescription };
   }
 

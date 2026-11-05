@@ -72,6 +72,6 @@ Session endpoints:
 - `POST /api/render/session/:id/signal` forwards WebRTC signaling.
 - `DELETE /api/render/session/:id` stops the renderer.
 
-For a direct DataChannel tile smoke test, open `http://server:8787/preview`. The page creates a WebRTC DataChannel, negotiates with `POST /api/render/webrtc`, receives the 16 native-resolution tile payloads and draws them into a 16384×16384 canvas. The input manifest's `format` should be `png-sequence` for this path; EXR decoding remains in the native GPU renderer path.
+For a direct DataChannel tile smoke test, open `http://server:8787/preview`. The page creates a WebRTC DataChannel, negotiates with `POST /api/render/webrtc`, receives the 16 native-resolution tile payloads and draws them into a 16384×16384 canvas. This direct browser path requires `format: "png-sequence"`; EXR decoding remains in the native GPU renderer path and must be converted to PNG tiles before browser transport.
 
 The web build is not used by this runtime.

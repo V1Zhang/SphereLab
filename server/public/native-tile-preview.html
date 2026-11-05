@@ -6,6 +6,10 @@
 <script>
 const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d'), status = document.querySelector('#status');
 const pc = new RTCPeerConnection(); const channel = pc.createDataChannel('native-tiles');
+const waitForIce = () => pc.iceGatheringState === 'complete' ? Promise.resolve() : new Promise(resolve => {
+  const done = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', done); resolve(); } };
+  pc.addEventListener('icegatheringstatechange', done); setTimeout(resolve, 6000);
+});
 let pending = null, pendingParts = [], pendingBytes = 0;
 channel.binaryType = 'arraybuffer';
 channel.onopen = () => status.textContent = 'WebRTC connected · native 16K tile mode';
@@ -23,7 +27,7 @@ channel.onmessage = async ({data}) => {
   ctx.drawImage(bitmap, pending.column * pending.width, pending.row * pending.height, pending.width, pending.height);
   bitmap.close(); pending = null;
 };
-(async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+(async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await waitForIce();
   const response = await fetch('/api/render/webrtc', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({offer:pc.localDescription})});
   if (!response.ok) throw new Error(await response.text()); const result = await response.json(); await pc.setRemoteDescription(result.answer);
 })().catch(error => { status.textContent = error.message; });
