@@ -31,12 +31,12 @@ async function start() {
       return;
     }
     if (req.method === "GET" && req.url === "/health") {
-      json(res, 200, { ok: true, service: "spherelab-server", renderer: renderer.status() });
+      json(res, 200, { ok: true, service: "spherelab-server", renderer: renderer.status(), preview: { mode: "native-tile", transport: "webrtc-datachannel", preserveSourceResolution: true } });
       return;
     }
 
     if (req.method === "GET" && req.url === "/api/renderer/status") {
-      json(res, 200, renderer.status());
+      json(res, 200, { ...renderer.status(), preview: { mode: "native-tile", transport: "webrtc-datachannel", preserveSourceResolution: true } });
       return;
     }
 
@@ -98,7 +98,7 @@ async function start() {
   });
 
   if (process.argv.includes("--health")) {
-    console.log(JSON.stringify({ ok: true, service: "spherelab-server", renderer: renderer.status() }, null, 2));
+    console.log(JSON.stringify({ ok: true, service: "spherelab-server", renderer: renderer.status(), preview: { mode: "native-tile", transport: "webrtc-datachannel", preserveSourceResolution: true } }, null, 2));
   } else {
     server.listen(config.port, config.host, () => {
       console.log(`SphereLab server listening on ${config.host}:${config.port}`);
