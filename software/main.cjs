@@ -132,7 +132,13 @@ async function createWindow() {
     return { action: "deny" };
   });
 
-  await win.loadURL(serverUrl);
+  const serverPreview = process.env.SPHERELAB_SERVER_URL;
+  if (serverPreview) {
+    const normalized = serverPreview.replace(/\/$/, "");
+    await win.loadURL(`${normalized}/preview`);
+  } else {
+    await win.loadURL(serverUrl);
+  }
 }
 
 app.whenReady().then(createWindow);

@@ -76,3 +76,13 @@ This copies the latest root `dist/` into `software/app-dist/` before packaging.
 - This wrapper does not provide server-side GPU rendering; use `server/` for that runtime.
 - The Electron package is Linux-only and remains a local control/compatibility shell.
 - The root web version is independent and is not changed by server runtime work.
+
+## Server-native preview
+
+To make the Linux desktop wrapper display the server's native-resolution tile preview, set the server URL before starting Electron:
+
+```bash
+SPHERELAB_SERVER_URL=http://127.0.0.1:8787 pnpm run start
+```
+
+The wrapper then opens `/preview`, which receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas. Without this variable it opens the normal local venue editor.
