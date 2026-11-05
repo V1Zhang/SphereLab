@@ -7,8 +7,8 @@
   "scripts": {
     "prepare-app": "node scripts/prepare-app.mjs",
     "start": "electron .",
-    "pack": "pnpm run prepare-app && electron-builder --dir",
-    "build": "pnpm run prepare-app && electron-builder"
+    "pack": "npm run prepare-app && electron-builder --dir",
+    "build": "npm run prepare-app && electron-builder"
   },
   "build": {
     "appId": "com.spherelab.desktop",

@@ -23,27 +23,22 @@ jobs:
         with:
           node-version: 22
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.4
-
       - name: Install root dependencies
-        run: pnpm install --frozen-lockfile --filter spherelab
+        run: npm install --ignore-scripts
 
       - name: Build web app
-        run: pnpm --filter spherelab run build
+        run: npm run build
 
       - name: Install desktop dependencies
         working-directory: software
-        run: pnpm install --no-frozen-lockfile --filter spherelab-desktop
+        run: npm ci
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           npm_config_electron_mirror: https://npmmirror.com/mirrors/electron/
 
       - name: Build desktop package
         working-directory: software
-        run: pnpm --filter spherelab-desktop run build
+        run: npm run build
 
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
