@@ -62,7 +62,7 @@ async function start() {
     if (req.method === "POST" && req.url === "/api/render/session") {
       requireRenderer(config);
       const payload = await readJson(req);
-      json(res, 201, renderer.createSession(payload));
+      json(res, 201, await renderer.createSession(payload));
       return;
     }
 

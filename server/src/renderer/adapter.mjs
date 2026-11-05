@@ -51,7 +51,7 @@ export class RendererAdapter {
     };
   }
 
-  createSession(request) {
+  async createSession(request) {
     const status = this.status();
     if (!status.executable) {
       const error = new Error("native renderer executable is not installed or not executable");
@@ -75,7 +75,13 @@ export class RendererAdapter {
       events: [],
       offer: null,
       error: null,
+      readyResolve: null,
+      readyReject: null,
     };
+    const ready = new Promise((resolve, reject) => {
+      session.readyResolve = resolve;
+      session.readyReject = reject;
+    });
     this.sessions.set(sessionId, session);
 
     let stdout = "";
@@ -99,10 +105,12 @@ export class RendererAdapter {
     child.on("error", (error) => {
       session.state = "error";
       session.error = error.message;
+      session.readyReject(error);
       this.#event(session, { type: "error", message: error.message });
     });
     child.on("close", (code, signal) => {
       if (session.state !== "stopped" && session.state !== "error") session.state = code === 0 ? "stopped" : "error";
+      if (session.state === "error") session.readyReject(new Error(session.error || `renderer exited with code ${code}`));
       this.#event(session, { type: "stopped", code, signal });
     });
 
@@ -125,6 +133,10 @@ export class RendererAdapter {
         tile: request.tile || null,
       },
     });
+    await Promise.race([
+      ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("renderer startup timed out")), 120000)),
+    ]);
     return this.publicSession(session);
   }
 
@@ -159,7 +171,10 @@ export class RendererAdapter {
   }
 
   #event(session, event) {
-    if (event.type === "ready") session.state = "ready";
+    if (event.type === "ready") {
+      session.state = "ready";
+      session.readyResolve(event);
+    }
     if (event.type === "offer") session.offer = event;
     session.events.push({ at: new Date().toISOString(), ...event });
     if (session.events.length > 100) session.events.shift();

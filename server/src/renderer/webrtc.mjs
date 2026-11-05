@@ -110,10 +110,23 @@ export class TileWebRtcSessions {
         channel.send(jsonMessage({ type: "tile", frame, column, row, width: manifest.tile.width, height: manifest.tile.height, mime: "image/png", bytes: data.byteLength }));
         const chunkSize = 48 * 1024;
         for (let offset = 0; offset < data.byteLength; offset += chunkSize) {
+          await this.#waitForBuffer(channel);
           channel.send(data.subarray(offset, Math.min(offset + chunkSize, data.byteLength)));
         }
       }
     }
     channel.send(jsonMessage({ type: "frame-end", frame }));
+  }
+
+  async #waitForBuffer(channel) {
+    if (channel.bufferedAmount < 4 * 1024 * 1024) return;
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 1000);
+      const unsubscribe = channel.bufferedAmountLow?.subscribe(() => {
+        clearTimeout(timer);
+        unsubscribe?.();
+        resolve();
+      });
+    });
   }
 }

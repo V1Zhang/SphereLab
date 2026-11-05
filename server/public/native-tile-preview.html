@@ -1,10 +1,11 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>SphereLab native 16K tile preview</title>
-<style>html,body{margin:0;background:#080a0d;color:#dce3ed;font:14px system-ui}body{display:grid;place-items:center;height:100vh}canvas{width:min(96vw,1400px);height:auto;background:#111}#status{position:fixed;top:12px;left:12px}</style>
-<div id="status">connecting…</div><canvas id="canvas" width="16384" height="16384"></canvas>
+<style>html,body{margin:0;background:#080a0d;color:#dce3ed;font:14px system-ui}body{display:grid;place-items:center;height:100vh}#tiles{display:grid;grid-template-columns:repeat(4,1fr);width:min(96vw,1600px);aspect-ratio:1;background:#111}canvas{display:block;width:100%;height:100%;image-rendering:auto}#status{position:fixed;top:12px;left:12px}</style>
+<div id="status">connecting…</div><div id="tiles"></div>
 <script>
-const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d'), status = document.querySelector('#status');
+const status = document.querySelector('#status'), tileCanvases = [];
+for (let i = 0; i < 16; i++) { const canvas = document.createElement('canvas'); canvas.width = 4096; canvas.height = 4096; document.querySelector('#tiles').append(canvas); tileCanvases.push(canvas); }
 const pc = new RTCPeerConnection(); const channel = pc.createDataChannel('native-tiles');
 const waitForIce = () => pc.iceGatheringState === 'complete' ? Promise.resolve() : new Promise(resolve => {
   const done = () => { if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', done); resolve(); } };
@@ -24,7 +25,7 @@ channel.onmessage = async ({data}) => {
   pendingParts.push(new Uint8Array(data)); pendingBytes += data.byteLength;
   if (pendingBytes < pending.bytes) return;
   const blob = new Blob(pendingParts, {type: pending.mime}); const bitmap = await createImageBitmap(blob);
-  ctx.drawImage(bitmap, pending.column * pending.width, pending.row * pending.height, pending.width, pending.height);
+  const canvas = tileCanvases[pending.row * 4 + pending.column]; canvas.getContext('2d').drawImage(bitmap, 0, 0, pending.width, pending.height);
   bitmap.close(); pending = null;
 };
 (async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await waitForIce();
