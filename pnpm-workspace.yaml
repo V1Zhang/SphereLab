@@ -1,3 +1,7 @@
+packages:
+  - "."
+  - "software"
+
 allowBuilds:
   esbuild: true
 onlyBuiltDependencies:
