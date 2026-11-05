@@ -22,11 +22,16 @@ RUN rm -f /etc/apt/sources.list.d/cuda*.list \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* \
   && sed -i 's|http://archive.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' /etc/apt/sources.list \
   && apt-get -o Acquire::Retries=3 update \
-  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
-  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-  && apt-get install -y --no-install-recommends nodejs npm \
+  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg xz-utils \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/*
+
+ARG NODE_VERSION=22.14.0
+RUN curl -fL --retry 3 "https://npmmirror.com/mirrors/node/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+  && tar -xJf /tmp/node.tar.xz -C /opt \
+  && rm -f /tmp/node.tar.xz \
+  && ln -s "/opt/node-v${NODE_VERSION}-linux-x64" /opt/node
+ENV PATH="/opt/node/bin:${PATH}"
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
