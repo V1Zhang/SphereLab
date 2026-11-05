@@ -6,6 +6,7 @@ const { pathToFileURL } = require("node:url");
 
 let server;
 let serverUrl;
+let previewWindow;
 
 function appDistDir() {
   if (app.isPackaged) {
@@ -132,12 +133,30 @@ async function createWindow() {
     return { action: "deny" };
   });
 
+  await win.loadURL(serverUrl);
+
   const serverPreview = process.env.SPHERELAB_SERVER_URL;
   if (serverPreview) {
     const normalized = serverPreview.replace(/\/$/, "");
-    await win.loadURL(`${normalized}/preview`);
-  } else {
-    await win.loadURL(serverUrl);
+    previewWindow = new BrowserWindow({
+      width: 1600,
+      height: 1000,
+      minWidth: 1024,
+      minHeight: 720,
+      title: "SphereLab native 16K tile preview",
+      backgroundColor: "#080a0d",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    previewWindow.removeMenu();
+    previewWindow.webContents.setWindowOpenHandler(({ url }) => {
+      shell.openExternal(url);
+      return { action: "deny" };
+    });
+    await previewWindow.loadURL(`${normalized}/preview`);
   }
 }
 

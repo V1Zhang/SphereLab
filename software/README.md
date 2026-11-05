@@ -85,4 +85,4 @@ To make the Linux desktop wrapper display the server's native-resolution tile pr
 SPHERELAB_SERVER_URL=http://127.0.0.1:8787 pnpm run start
 ```
 
-The wrapper then opens `/preview`, which receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas. Without this variable it opens the normal local venue editor.
+The wrapper keeps the normal local venue editor in the main window and opens `/preview` as a second software window. The preview window receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas. Without this variable it opens only the local venue editor.
