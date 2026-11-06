@@ -1,6 +1,6 @@
 {
-  "installCommand": "pnpm install --filter . --ignore-scripts",
-  "buildCommand": "pnpm --filter . run build",
+  "installCommand": "echo 'Static deploy: skip dependency installation'",
+  "buildCommand": "echo 'Static deploy: use checked-in dist output'",
   "outputDirectory": "dist",
   "framework": null
 }
