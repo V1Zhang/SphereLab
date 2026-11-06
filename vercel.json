@@ -1,0 +1,6 @@
+{
+  "installCommand": "pnpm install --filter . --ignore-scripts",
+  "buildCommand": "pnpm --filter . run build",
+  "outputDirectory": "dist",
+  "framework": null
+}
