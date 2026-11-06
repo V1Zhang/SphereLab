@@ -7,7 +7,8 @@ The target runtime is:
 - Linux + NVIDIA GPU
 - FFmpeg/GStreamer for media ingest and hardware decode
 - GPU off-screen renderer for venue, dome and mask rendering
-- Native-resolution tile transport for interactive preview
+- Native local frame streaming for the Linux desktop application
+- Existing WebRTC tile transport for the unchanged web preview
 
 ## Current status
 
@@ -36,7 +37,18 @@ The image installs Node.js 20 because the server runtime uses modern Node ESM AP
 
 ## 16K tile input
 
-The high-resolution path uses a manifest instead of one monolithic `16384x16384` HEVC stream. Copy `tile-manifest.example.json` to the media directory as `tile-manifest.json`, then place the 4x4 `4096x4096` tile frames under the declared pattern.
+The web preview still uses the tile manifest path described below. The Linux desktop application uses `/api/native/stream` instead: it accepts the path of one complete video, starts FFmpeg once, and streams encoded frames sequentially while the file is playing. No user-created tile manifest is required for the desktop path.
+
+The desktop container must mount the same host directory that the application uses for imported files:
+
+```bash
+docker run --gpus all --rm -p 8787:8787 \
+  -v "$HOME/SphereLab-media:/data/media:ro" \
+  -v /tmp/spherelab-config:/opt/spherelab/config.json:ro \
+  spherelab-server
+```
+
+The desktop endpoint is a local HTTP native stream, not WebRTC. It uses a length-prefixed frame protocol so large frames are consumed incrementally and backpressure is respected.
 
 For an end-to-end smoke test without production media, use the PNG manifest and generator:
 

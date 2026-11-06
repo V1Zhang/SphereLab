@@ -85,8 +85,8 @@ To make the Linux desktop wrapper display the server's native-resolution tile pr
 SPHERELAB_SERVER_URL=http://127.0.0.1:8787 pnpm run start
 ```
 
-The main SphereLab window keeps the normal venue editor and shows a `16K 原生预览` button. The embedded preview receives 4096×4096 tiles over WebRTC and assembles the 16384×16384 canvas.
+The main SphereLab window keeps the normal venue editor and shows a `16K 原生预览` button. In the desktop build, `导入完整视频` copies one complete source file into the shared media directory and starts the local native frame stream. It does not open `/preview` and does not use WebRTC.
 
 Packaged AppImage builds use `http://127.0.0.1:8787` by default, so after the NVIDIA server container is running you can launch the application from the Linux desktop directly. Set `SPHERELAB_SERVER_URL` only when the renderer is on another address.
 
-The 16K source still needs to be prepared as a valid server-side tile manifest. The desktop app is the operator interface; the NVIDIA server performs decoding and GPU composition so the browser/Electron video decoder is not used for 16K HEVC.
+The web deployment is unchanged and continues using its existing browser path. The desktop path reads the complete file sequentially with FFmpeg and keeps the source at its native resolution; the input is not pre-split by the user. The NVIDIA server must have access to the shared `~/SphereLab-media` directory through `/data/media`.

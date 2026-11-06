@@ -1,11 +1,21 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, shell, ipcMain } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const os = require("node:os");
 const { pathToFileURL } = require("node:url");
 
 let server;
 let serverUrl;
+
+ipcMain.handle("import-media", async (_event, sourcePath) => {
+  if (typeof sourcePath !== "string" || !path.isAbsolute(sourcePath)) throw new Error("invalid media path");
+  const mediaRoot = process.env.SPHERELAB_MEDIA_DIR || path.join(os.homedir(), "SphereLab-media");
+  await fs.promises.mkdir(mediaRoot, { recursive: true });
+  const filename = path.basename(sourcePath);
+  await fs.promises.copyFile(sourcePath, path.join(mediaRoot, filename));
+  return { source: `/data/media/${filename}`, filename };
+});
 
 function appDistDir() {
   if (app.isPackaged) {
@@ -123,6 +133,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 

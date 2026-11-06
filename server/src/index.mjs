@@ -6,9 +6,10 @@ import { rendererStatus, requireRenderer } from "./renderer/contract.mjs";
 import { RendererAdapter } from "./renderer/adapter.mjs";
 import { TileWebRtcSessions } from "./renderer/webrtc.mjs";
 import fs from "node:fs/promises";
+import { streamVideoFrames } from "./media/native-stream.mjs";
 
 function json(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
   res.end(JSON.stringify(body));
 }
 
@@ -24,6 +25,11 @@ async function start() {
   const tileWebRtc = new TileWebRtcSessions(config, renderer);
   const server = http.createServer(async (req, res) => {
   try {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type" });
+      res.end();
+      return;
+    }
     if (req.method === "GET" && req.url === "/preview") {
       const html = await fs.readFile(new URL("../public/native-tile-preview.html", import.meta.url), "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -44,6 +50,16 @@ async function start() {
       const payload = await readJson(req);
       const source = payload.source || config.media.source;
       json(res, 200, { source, probe: await probeMedia(source) });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/native/stream") {
+      const payload = await readJson(req);
+      const source = payload.source || config.media?.source;
+      if (!source) throw Object.assign(new Error("a complete video source is required"), { code: "native_stream_source_required" });
+      await fs.access(source);
+      res.writeHead(200, { "Content-Type": "application/x-spherelab-native-frame-stream", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" });
+      streamVideoFrames({ source, response: res });
       return;
     }
 

@@ -34,16 +34,72 @@ const seatInfoEl = document.getElementById("seat-info")!;
 const analysisInfoEl = document.getElementById("analysis-info")!;
 const nativePreviewToggle = document.getElementById("native-preview-toggle") as HTMLButtonElement | null;
 const nativePreviewDock = document.getElementById("native-preview-dock") as HTMLElement | null;
-const nativePreviewFrame = nativePreviewDock?.querySelector("iframe") as HTMLIFrameElement | null;
+const nativeMediaPick = document.getElementById("native-media-pick") as HTMLButtonElement | null;
+const nativeMediaStatus = document.getElementById("native-media-status") as HTMLElement | null;
+const nativeMediaFrame = document.getElementById("native-media-frame") as HTMLImageElement | null;
 
 // In the Linux desktop build the Electron shell passes the GPU server URL as a query parameter.
 // Keeping this integration in the main venue app means the editor and native 16K preview are one
 // application window; the web deployment remains unchanged because it does not provide this param.
 const desktopServerUrl = new URLSearchParams(window.location.search).get("desktopServer");
-if (desktopServerUrl && nativePreviewToggle && nativePreviewDock && nativePreviewFrame) {
+if (desktopServerUrl && nativePreviewToggle && nativePreviewDock && nativeMediaPick && nativeMediaStatus && nativeMediaFrame) {
   const normalized = desktopServerUrl.replace(/\/$/, "");
-  nativePreviewFrame.src = `${normalized}/preview`;
   nativePreviewToggle.classList.add("visible");
+  const nativeFileInput = document.createElement("input");
+  nativeFileInput.type = "file";
+  nativeFileInput.accept = "video/*,.mp4,.mov,.m4v,.mkv,.webm,.hevc,.av1";
+  nativeFileInput.style.display = "none";
+  document.body.appendChild(nativeFileInput);
+  let nativeAbort: AbortController | null = null;
+  let nativeObjectUrl: string | null = null;
+  const desktopBridge = (window as Window & { sphereLabDesktop?: {
+    getPathForFile(file: File): string;
+    importMedia(filePath: string): Promise<{ source: string; filename: string }>;
+  } }).sphereLabDesktop;
+  const consumeNativeStream = async (source: string) => {
+    nativeAbort?.abort();
+    nativeAbort = new AbortController();
+    const response = await fetch(`${normalized}/api/native/stream`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source }), signal: nativeAbort.signal,
+    });
+    if (!response.ok || !response.body) throw new Error(await response.text());
+    const reader = response.body.getReader();
+    let buffer = new Uint8Array(0);
+    const append = (a: Uint8Array, b: Uint8Array) => { const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      buffer = append(buffer, part.value);
+      while (buffer.length >= 4) {
+        const headerLength = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0);
+        if (buffer.length < 4 + headerLength + 8) break;
+        const payloadLength = Number(new DataView(buffer.buffer, buffer.byteOffset + 4 + headerLength, 8).getBigUint64(0));
+        const total = 4 + headerLength + 8 + payloadLength;
+        if (buffer.length < total) break;
+        const blob = new Blob([buffer.subarray(4 + headerLength + 8, total)], { type: "image/jpeg" });
+        if (nativeObjectUrl) URL.revokeObjectURL(nativeObjectUrl);
+        nativeObjectUrl = URL.createObjectURL(blob);
+        nativeMediaFrame.src = nativeObjectUrl;
+        nativeMediaStatus.textContent = "正在流式播放完整视频 · 原始帧未降采样";
+        buffer = buffer.subarray(total);
+      }
+    }
+    nativeMediaStatus.textContent = "流式播放结束";
+  };
+  nativeMediaPick.addEventListener("click", () => nativeFileInput.click());
+  nativeFileInput.addEventListener("change", async () => {
+    const file = nativeFileInput.files?.[0];
+    nativeFileInput.value = "";
+    if (!file || !desktopBridge) { nativeMediaStatus.textContent = "桌面文件桥接不可用"; return; }
+    try {
+      nativeMediaStatus.textContent = `正在导入：${file.name}`;
+      const imported = await desktopBridge.importMedia(desktopBridge.getPathForFile(file));
+      await consumeNativeStream(imported.source);
+    } catch (error) {
+      nativeMediaStatus.textContent = `流式播放失败：${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
   nativePreviewToggle.addEventListener("click", () => {
     const visible = nativePreviewDock.classList.toggle("visible");
     nativePreviewToggle.textContent = visible ? "关闭 16K 预览" : "16K 原生预览";
