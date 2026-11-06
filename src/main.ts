@@ -1952,10 +1952,18 @@ function exportAdjustedVideo() {
   scratch.height = sourceHeight;
   const fps = Math.max(1, params.signalFrameRateFps);
   const stream = output.captureStream(fps);
-  const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+  // Do not silently fall back to WebM: the requested delivery format is MP4/H.264. Safari and
+  // some Chromium builds expose this through MediaRecorder; browsers without an MP4 recorder
+  // must report the limitation instead of returning a file with the wrong container.
+  const mimeType = [
+    "video/mp4;codecs=avc1.640028",
+    "video/mp4;codecs=avc1.4d0028",
+    "video/mp4;codecs=avc1.42e028",
+    "video/mp4",
+  ]
     .find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) {
-    contentStatusEl.innerHTML = `<span class="err">当前浏览器没有可用的 WebM 视频编码器。</span>`;
+    contentStatusEl.innerHTML = `<span class="err">当前浏览器不支持 MP4/H.264 网页录制，请使用支持 MP4 MediaRecorder 的浏览器（如 Safari）。</span>`;
     return;
   }
 
@@ -1981,8 +1989,8 @@ function exportAdjustedVideo() {
     currentVideoEl!.currentTime = oldTime;
     currentVideoEl!.loop = oldLoop;
     if (!oldPaused) void currentVideoEl!.play();
-    downloadBlob(new Blob(chunks, { type: mimeType }), `spherelab-adjusted-video-${timestampForFilename()}.webm`);
-    contentStatusEl.innerHTML = `已导出 ERP 视频：<b>${width}×${height} WebM</b>`;
+    downloadBlob(new Blob(chunks, { type: mimeType }), `spherelab-adjusted-video-${timestampForFilename()}.mp4`);
+    contentStatusEl.innerHTML = `已导出 ERP 视频：<b>${width}×${height} MP4</b>`;
   }, { once: true });
   currentVideoEl.addEventListener("ended", finish, { once: true });
   currentVideoEl.currentTime = 0;

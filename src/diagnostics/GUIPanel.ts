@@ -334,7 +334,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   analysis.add({ exportCsv: deps.onExportSeatCSV }, "exportCsv").name("导出座位分析（CSV）");
   analysis.add({ exportCfg: deps.onExportConfigJSON }, "exportCfg").name("导出当前配置（JSON）");
   analysis.add({ exportERP: deps.onExportAdjustedERP }, "exportERP").name("导出调整后 ERP（PNG）");
-  analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（WebM）");
+  analysis.add({ exportVideo: deps.onExportAdjustedVideo }, "exportVideo").name("导出 ERP 视频（MP4）");
   analysis.add({ exportPng: deps.onExportScreenshot }, "exportPng").name("导出当前视角截图（PNG）");
 
   const ledSpec = gui.addFolder("LED 设备规格").close();
