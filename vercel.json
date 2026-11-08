@@ -1,6 +1,6 @@
 {
-  "installCommand": "echo 'Static deploy: skip dependency installation'",
-  "buildCommand": "echo 'Static deploy: use checked-in dist output'",
+  "installCommand": "npm install --ignore-scripts",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": null
 }
