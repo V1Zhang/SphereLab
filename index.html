@@ -77,59 +77,6 @@
         margin: 0;
         letter-spacing: 0.02em;
       }
-      #native-preview-toggle {
-        display: none;
-        background: rgba(79, 209, 197, 0.12);
-        border: 1px solid rgba(79, 209, 197, 0.45);
-        color: var(--accent);
-        font-size: 11px;
-        line-height: 1;
-        padding: 5px 8px;
-        border-radius: 6px;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-      #native-preview-toggle.visible { display: inline-block; }
-      #native-preview-dock {
-        display: none;
-        position: fixed;
-        z-index: 20;
-        top: 14px;
-        right: 14px;
-        width: min(58vw, 900px);
-        height: min(72vh, 760px);
-        min-width: 520px;
-        min-height: 420px;
-        background: #080a0d;
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: 0 18px 60px rgba(0,0,0,.45);
-        overflow: hidden;
-      }
-      #native-preview-dock.visible { display: block; }
-      #native-preview-dock iframe { width: 100%; height: 100%; border: 0; }
-      #native-preview-dock .native-preview-toolbar {
-        position: absolute; z-index: 2; left: 10px; right: 10px; top: 10px;
-        display: flex; align-items: center; gap: 8px; font-size: 11px;
-      }
-      #native-preview-dock .native-preview-toolbar button {
-        background: rgba(18,21,28,.9); border: 1px solid var(--accent); color: var(--accent);
-        border-radius: 6px; padding: 5px 8px; cursor: pointer;
-      }
-      #native-media-status { color: var(--muted); background: rgba(8,10,13,.8); padding: 4px 7px; border-radius: 6px; }
-      #native-media-frame { width: 100%; height: 100%; object-fit: contain; padding-top: 34px; }
-      #native-preview-dock .dock-title {
-        position: absolute;
-        z-index: 1;
-        top: 8px;
-        right: 10px;
-        color: var(--muted);
-        background: rgba(8,10,13,.8);
-        border-radius: 6px;
-        padding: 4px 7px;
-        font-size: 10px;
-        pointer-events: none;
-      }
       #title-bar p {
         font-size: 11px;
         color: var(--muted);
@@ -396,10 +343,7 @@
       <div id="title-bar">
         <div class="row">
           <h1>SphereLab</h1>
-          <span>
-            <button id="native-preview-toggle" type="button" aria-expanded="false">16K 原生预览</button>
-            <button id="info-toggle" type="button" aria-expanded="false">展开 ▾</button>
-          </span>
+          <button id="info-toggle" type="button" aria-expanded="false">展开 ▾</button>
         </div>
         <p>球幕内容虚拟预演与视觉适配系统<br />载入素材与清单，预览球幕映射、Mask、座位视角与几何诊断<br />点击观众席任意座位可预览该座位视角</p>
       </div>
@@ -424,15 +368,6 @@
     <div class="hud" id="inspector">
       <h2>指针拾取信息</h2>
       <div id="inspector-body" class="miss">移动鼠标到球幕上查看 yaw / pitch / ERP UV</div>
-    </div>
-
-    <div id="native-preview-dock" aria-label="16K 原生预览">
-      <div class="dock-title">GPU / WebRTC 原生 tile 预览</div>
-      <div class="native-preview-toolbar">
-        <button id="native-media-pick" type="button">导入完整视频</button>
-        <span id="native-media-status">等待完整视频</span>
-      </div>
-      <img id="native-media-frame" alt="16K 原生视频帧" />
     </div>
 
     <script type="module" src="/src/main.ts"></script>

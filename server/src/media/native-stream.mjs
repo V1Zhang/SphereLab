@@ -12,7 +12,7 @@ function framePacket(payload) {
 
 export function streamVideoFrames({ source, response, ffmpeg = "ffmpeg" }) {
   const child = spawn(ffmpeg, [
-    "-hide_banner", "-loglevel", "error", "-max_pixels", "300000000", "-i", source,
+    "-hide_banner", "-loglevel", "error", "-max_pixels", "300000000", "-re", "-i", source,
     "-an", "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "3", "pipe:1",
   ], { stdio: ["ignore", "pipe", "pipe"] });
   let buffer = Buffer.alloc(0);

@@ -32,80 +32,15 @@ const seatInfoEl = document.getElementById("seat-info")!;
 // Filled in by runFullVenueAnalysis() (see "分析 / 导出" below) — stays empty/hidden until the
 // user runs the batch analysis at least once.
 const analysisInfoEl = document.getElementById("analysis-info")!;
-const nativePreviewToggle = document.getElementById("native-preview-toggle") as HTMLButtonElement | null;
-const nativePreviewDock = document.getElementById("native-preview-dock") as HTMLElement | null;
-const nativeMediaPick = document.getElementById("native-media-pick") as HTMLButtonElement | null;
-const nativeMediaStatus = document.getElementById("native-media-status") as HTMLElement | null;
-const nativeMediaFrame = document.getElementById("native-media-frame") as HTMLImageElement | null;
-
 // In the Linux desktop build the Electron shell passes the GPU server URL as a query parameter.
-// Keeping this integration in the main venue app means the editor and native 16K preview are one
-// application window; the web deployment remains unchanged because it does not provide this param.
+// The web deployment does not provide this parameter and therefore keeps its original browser
+// video path unchanged.
 const desktopServerUrl = new URLSearchParams(window.location.search).get("desktopServer");
-if (desktopServerUrl && nativePreviewToggle && nativePreviewDock && nativeMediaPick && nativeMediaStatus && nativeMediaFrame) {
-  const normalized = desktopServerUrl.replace(/\/$/, "");
-  nativePreviewToggle.classList.add("visible");
-  const nativeFileInput = document.createElement("input");
-  nativeFileInput.type = "file";
-  nativeFileInput.accept = "video/*,.mp4,.mov,.m4v,.mkv,.webm,.hevc,.av1";
-  nativeFileInput.style.display = "none";
-  document.body.appendChild(nativeFileInput);
-  let nativeAbort: AbortController | null = null;
-  let nativeObjectUrl: string | null = null;
-  const desktopBridge = (window as Window & { sphereLabDesktop?: {
-    getPathForFile(file: File): string;
-    importMedia(filePath: string): Promise<{ source: string; filename: string }>;
-  } }).sphereLabDesktop;
-  const consumeNativeStream = async (source: string) => {
-    nativeAbort?.abort();
-    nativeAbort = new AbortController();
-    const response = await fetch(`${normalized}/api/native/stream`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source }), signal: nativeAbort.signal,
-    });
-    if (!response.ok || !response.body) throw new Error(await response.text());
-    const reader = response.body.getReader();
-    let buffer = new Uint8Array(0);
-    const append = (a: Uint8Array, b: Uint8Array) => { const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; };
-    while (true) {
-      const part = await reader.read();
-      if (part.done) break;
-      buffer = append(buffer, part.value);
-      while (buffer.length >= 4) {
-        const headerLength = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0);
-        if (buffer.length < 4 + headerLength + 8) break;
-        const payloadLength = Number(new DataView(buffer.buffer, buffer.byteOffset + 4 + headerLength, 8).getBigUint64(0));
-        const total = 4 + headerLength + 8 + payloadLength;
-        if (buffer.length < total) break;
-        const blob = new Blob([buffer.subarray(4 + headerLength + 8, total)], { type: "image/jpeg" });
-        if (nativeObjectUrl) URL.revokeObjectURL(nativeObjectUrl);
-        nativeObjectUrl = URL.createObjectURL(blob);
-        nativeMediaFrame.src = nativeObjectUrl;
-        nativeMediaStatus.textContent = "正在流式播放完整视频 · 原始帧未降采样";
-        buffer = buffer.subarray(total);
-      }
-    }
-    nativeMediaStatus.textContent = "流式播放结束";
-  };
-  nativeMediaPick.addEventListener("click", () => nativeFileInput.click());
-  nativeFileInput.addEventListener("change", async () => {
-    const file = nativeFileInput.files?.[0];
-    nativeFileInput.value = "";
-    if (!file || !desktopBridge) { nativeMediaStatus.textContent = "桌面文件桥接不可用"; return; }
-    try {
-      nativeMediaStatus.textContent = `正在导入：${file.name}`;
-      const imported = await desktopBridge.importMedia(desktopBridge.getPathForFile(file));
-      await consumeNativeStream(imported.source);
-    } catch (error) {
-      nativeMediaStatus.textContent = `流式播放失败：${error instanceof Error ? error.message : String(error)}`;
-    }
-  });
-  nativePreviewToggle.addEventListener("click", () => {
-    const visible = nativePreviewDock.classList.toggle("visible");
-    nativePreviewToggle.textContent = visible ? "关闭 16K 预览" : "16K 原生预览";
-    nativePreviewToggle.setAttribute("aria-expanded", String(visible));
-  });
-}
+const desktopServerBaseUrl = desktopServerUrl?.replace(/\/$/, "") ?? null;
+const desktopBridge = (window as Window & { sphereLabDesktop?: {
+  getPathForFile(file: File): string;
+  importMedia(filePath: string): Promise<{ source: string; filename: string }>;
+} }).sphereLabDesktop;
 
 // Left-stack collapse toggle: starts collapsed (index.html ships #top-left-stack with the
 // "collapsed" class already on it) so the description and live stats don't cover the viewport on
@@ -624,6 +559,8 @@ function onToggleLayer(key: DiagnosticsLayerKey, visible: boolean) {
 
 let currentVideoEl: HTMLVideoElement | null = null;
 let currentTexture: THREE.Texture = placeholderTexture;
+let nativeStreamAbort: AbortController | null = null;
+let nativeStreamCanvas: HTMLCanvasElement | null = null;
 
 const fileInput = document.createElement("input");
 fileInput.type = "file";
@@ -635,6 +572,8 @@ fileInput.style.display = "none";
 document.body.appendChild(fileInput);
 
 function disposeCurrentContent() {
+  nativeStreamAbort?.abort();
+  nativeStreamAbort = null;
   if (currentTexture !== placeholderTexture) currentTexture.dispose();
   if (currentVideoEl) {
     currentVideoEl.pause();
@@ -687,7 +626,73 @@ function setTexture(tex: THREE.Texture) {
   applyMediaSolidLook();
 }
 
+function appendBytes(a: Uint8Array, b: Uint8Array) {
+  const result = new Uint8Array(a.length + b.length);
+  result.set(a);
+  result.set(b, a.length);
+  return result;
+}
+
+/** Desktop-only complete-file streaming path. It feeds the same media material as the normal
+ * browser video loader; the only difference is that FFmpeg on the Linux GPU server supplies
+ * decoded frames instead of Chromium's video decoder. */
+async function loadNativeStreamFile(file: File) {
+  if (!desktopServerBaseUrl || !desktopBridge) throw new Error("桌面原生视频桥接不可用");
+  disposeCurrentContent();
+  contentStatusEl.innerHTML = `正在导入完整视频并启动流式读取：<b>${file.name}</b>`;
+  const imported = await desktopBridge.importMedia(desktopBridge.getPathForFile(file));
+  nativeStreamAbort = new AbortController();
+  const response = await fetch(`${desktopServerBaseUrl}/api/native/stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ source: imported.source }),
+    signal: nativeStreamAbort.signal,
+  });
+  if (!response.ok || !response.body) throw new Error(await response.text());
+
+  const reader = response.body.getReader();
+  let buffer = new Uint8Array(0);
+  let texture: THREE.CanvasTexture | null = null;
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    buffer = appendBytes(buffer, part.value);
+    while (buffer.length >= 4) {
+      const headerLength = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0);
+      if (buffer.length < 4 + headerLength + 8) break;
+      const payloadLength = Number(new DataView(buffer.buffer, buffer.byteOffset + 4 + headerLength, 8).getBigUint64(0));
+      const total = 4 + headerLength + 8 + payloadLength;
+      if (buffer.length < total) break;
+      const jpeg = buffer.slice(4 + headerLength + 8, total);
+      const bitmap = await createImageBitmap(new Blob([jpeg], { type: "image/jpeg" }));
+      if (!nativeStreamCanvas || nativeStreamCanvas.width !== bitmap.width || nativeStreamCanvas.height !== bitmap.height) {
+        nativeStreamCanvas = document.createElement("canvas");
+        nativeStreamCanvas.width = bitmap.width;
+        nativeStreamCanvas.height = bitmap.height;
+        texture?.dispose();
+        texture = new THREE.CanvasTexture(nativeStreamCanvas);
+        texture.flipY = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        setTexture(texture);
+      }
+      nativeStreamCanvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      texture!.needsUpdate = true;
+      contentStatusEl.innerHTML = `正在流式播放：<b>${file.name}</b>（完整视频，原始帧未降采样）`;
+      buffer = buffer.slice(total);
+    }
+  }
+  contentStatusEl.innerHTML = `流式播放结束：<b>${file.name}</b>`;
+}
+
 function loadVideoFile(file: File) {
+  if (desktopServerBaseUrl && desktopBridge) {
+    void loadNativeStreamFile(file).catch((error) => {
+      contentStatusEl.innerHTML = `<span class="err">完整视频流式读取失败：${error instanceof Error ? error.message : String(error)}</span>`;
+    });
+    return;
+  }
   disposeCurrentContent();
   const url = URL.createObjectURL(file);
   const video = document.createElement("video");

@@ -2,7 +2,7 @@
 
 This directory contains the Linux desktop application for SphereLab. It packages the complete venue editor and, when a Linux/NVIDIA SphereLab server is available, exposes the native 16K tile preview inside the same application window.
 
-This wrapper is Linux-only. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md); the desktop application connects to it over localhost/WebRTC and does not open the preview in a separate browser window.
+This wrapper is Linux-only. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md); the desktop application connects to its local native stream and does not open a separate preview window.
 
 ## Directory Boundary
 
@@ -85,7 +85,7 @@ To make the Linux desktop wrapper display the server's native-resolution tile pr
 SPHERELAB_SERVER_URL=http://127.0.0.1:8787 pnpm run start
 ```
 
-The main SphereLab window keeps the normal venue editor and shows a `16K 原生预览` button. In the desktop build, `导入完整视频` copies one complete source file into the shared media directory and starts the local native frame stream. It does not open `/preview` and does not use WebRTC.
+The main SphereLab window keeps the normal venue editor and the existing `载入素材` button. In the desktop build, selecting a video automatically copies the complete source file into the shared media directory and replaces the normal browser decoder with the local native FFmpeg stream. The received frames update the same球幕材质 used by the editor; no separate preview window or WebRTC is used.
 
 Packaged AppImage builds use `http://127.0.0.1:8787` by default, so after the NVIDIA server container is running you can launch the application from the Linux desktop directly. Set `SPHERELAB_SERVER_URL` only when the renderer is on another address.
 
