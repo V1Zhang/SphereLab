@@ -1,8 +1,8 @@
-# SphereLab Linux Desktop Wrapper
+# SphereLab Desktop Wrapper
 
-This directory contains the Linux desktop application for SphereLab. It packages the complete venue editor and, when a Linux/NVIDIA SphereLab server is available, exposes the native 16K tile preview inside the same application window.
+This directory contains the macOS/Linux desktop application for SphereLab. It packages the complete venue editor and can use a local FFmpeg binary for high-quality ERP video export.
 
-This wrapper is Linux-only. The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md); the desktop application connects to its local native stream and does not open a separate preview window.
+The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md). Linux builds can connect to that local native stream; macOS builds use the normal local browser decoder and local FFmpeg export.
 
 ## Directory Boundary
 
@@ -76,6 +76,10 @@ This copies the latest root `dist/` into `software/app-dist/` before packaging.
 - This wrapper does not provide server-side GPU rendering; use `server/` for that runtime.
 - The Electron package is Linux-only and remains a local control/compatibility shell.
 - The root web version is independent and is not changed by server runtime work.
+
+## High-quality local video export
+
+The desktop build renders ERP frames as lossless PNG files and asks the local FFmpeg process to encode them as a mathematically lossless H.264 MP4 (`-qp 0`, `yuv444p`). This avoids the browser `MediaRecorder` path and is intended for QuickTime-compatible desktop workflows. The bundled Apple Silicon build includes an arm64 FFmpeg binary.
 
 ## Server-native preview
 

@@ -5,15 +5,16 @@ import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { createDefaultVenueConfig } from "./core/VenueConfig";
 import { buildERPSphereGeometry, mediaPlaneDomeRadius, mediaPlaneShapeLabel } from "./core/MediaPlaneGeometry";
 import { buildVenueGroup, audienceSeatWorldPosition } from "./core/VenueGeometry";
-import { buildDiagnosticsLayers, buildContentOriginMarker, buildEyePositionMarker, buildRayDiagram } from "./diagnostics/DiagnosticsOverlay";
+import { buildDiagnosticsLayers, buildContentOriginMarker, buildEyePositionMarker, buildCameraLocationMarker, buildRayDiagram } from "./diagnostics/DiagnosticsOverlay";
 import { buildScene, SceneBundle } from "./scene/SceneBuilder";
 import { computeCameraPresets, CameraPreset } from "./scene/CameraPresets";
-import { createGUIPanel, GUIParams, DiagnosticsLayerKey } from "./diagnostics/GUIPanel";
+import { createGUIPanel, GUIParams, DiagnosticsLayerKey, CameraLocationGUI } from "./diagnostics/GUIPanel";
 import { createPlaceholderERPTexture } from "./content/PlaceholderERP";
 import { DEFAULT_ERP_MANIFEST, ERPManifest, ERPProjection, parseManifest, manifestColorSpaceToThree } from "./content/ERPManifest";
 import { wrapYawDeg, zUpDirectionToYawPitch, yawPitchToZUpDirection } from "./utils/SphericalMath";
 import { estimateMediaPlaneAreaM2, mediaPlaneCoverageFraction } from "./core/ScreenMask";
 import { intersectDomeRay, computeSeatCoverage, directionOffsetDeg, runBatchSeatAnalysis, seatAnalysisToCSV, BatchSeatAnalysis } from "./core/SeatMetrics";
+import { parseMaxScene } from "./content/MaxScene";
 
 // ---------------------------------------------------------------------------
 // Bootstrap: renderer / camera / controls
@@ -38,8 +39,12 @@ const analysisInfoEl = document.getElementById("analysis-info")!;
 const desktopServerUrl = new URLSearchParams(window.location.search).get("desktopServer");
 const desktopServerBaseUrl = desktopServerUrl?.replace(/\/$/, "") ?? null;
 const desktopBridge = (window as Window & { sphereLabDesktop?: {
+  isDesktop?: boolean;
   getPathForFile(file: File): string;
   importMedia(filePath: string): Promise<{ source: string; filename: string }>;
+  startVideoExport?: () => Promise<{ id: string }>;
+  writeVideoExportFrame?: (id: string, frameIndex: number, bytes: Uint8Array) => Promise<void>;
+  finishVideoExport?: (id: string, fps: number) => Promise<{ cancelled: boolean; path?: string }>;
 } }).sphereLabDesktop;
 
 // Left-stack collapse toggle: starts collapsed (index.html ships #top-left-stack with the
@@ -88,7 +93,20 @@ const cfg = createDefaultVenueConfig();
 const placeholderTexture = createPlaceholderERPTexture(2048);
 
 let bundle: SceneBundle = buildScene(cfg, placeholderTexture);
-let presets: CameraPreset[] = computeCameraPresets(cfg);
+const cameraLocations: CameraLocationGUI[] = computeCameraPresets(cfg).map((preset) => ({
+  id: preset.id,
+  label: preset.label,
+  x: preset.position.x,
+  y: preset.position.y,
+  z: preset.position.z,
+  targetX: preset.target.x,
+  targetY: preset.target.y,
+  targetZ: preset.target.z,
+  fov: preset.fov,
+  visible: true,
+  isDefault: true,
+}));
+let presets: CameraPreset[] = cameraLocations.map(cameraLocationToPreset);
 let activeSeatLabel: string | null = null;
 // Audience position labels are intentionally shown only in free-orbit + edit mode. Named
 // viewpoints and preview mode are kept visually clean for presentation/testing.
@@ -104,6 +122,21 @@ bundle.scene.add(contentOriginMarker);
 // (applyPreset / selectSeat) instead of VenueConfig. See DiagnosticsOverlay.ts `buildEyePositionMarker`.
 const eyePositionMarker = buildEyePositionMarker();
 bundle.scene.add(eyePositionMarker);
+const cameraLocationMarkers = new THREE.Group();
+cameraLocationMarkers.name = "cameraLocationMarkers";
+bundle.scene.add(cameraLocationMarkers);
+
+function updateCameraLocationMarkers() {
+  cameraLocationMarkers.clear();
+  for (const location of cameraLocations) {
+    if (!location.visible) continue;
+    const marker = buildCameraLocationMarker(location.label || "未命名摄像机");
+    marker.position.set(location.x, location.y, location.z);
+    marker.userData.cameraLocationId = location.id;
+    cameraLocationMarkers.add(marker);
+  }
+}
+updateCameraLocationMarkers();
 function updateEyePositionMarkerPosition(pos: THREE.Vector3) {
   eyePositionMarker.position.copy(pos);
 }
@@ -287,8 +320,73 @@ function rebuildDiagnostics() {
 }
 
 function refreshCameraPresets() {
-  presets = computeCameraPresets(cfg);
+  presets = cameraLocations.map(cameraLocationToPreset);
   renderCameraBar();
+}
+
+function cameraLocationToPreset(location: CameraLocationGUI): CameraPreset {
+  return {
+    id: location.id,
+    label: location.label || "未命名摄像机",
+    position: new THREE.Vector3(location.x, location.y, location.z),
+    target: new THREE.Vector3(location.targetX, location.targetY, location.targetZ),
+    fov: THREE.MathUtils.clamp(location.fov, 1, 179),
+    cutaway: false,
+  };
+}
+
+function syncCameraPreset(location: CameraLocationGUI) {
+  const index = cameraLocations.findIndex((cameraLocation) => cameraLocation.id === location.id);
+  if (index < 0) return;
+  cameraLocations[index] = location;
+  presets = cameraLocations.map(cameraLocationToPreset);
+  updateCameraLocationMarkers();
+  renderCameraBar();
+}
+
+function addCameraLocation() {
+  const source = presets.find((preset) => preset.id === activePresetId) ?? presets[0];
+  const id = `camera-${Date.now()}`;
+  cameraLocations.push({
+    id,
+    label: `摄像机 ${cameraLocations.length + 1}`,
+    x: source?.position.x ?? 0,
+    y: source?.position.y ?? 1.2,
+    z: source?.position.z ?? 0,
+    targetX: source?.target.x ?? 0,
+    targetY: source?.target.y ?? 0,
+    targetZ: source?.target.z ?? -10,
+    fov: source?.fov ?? 90,
+    visible: true,
+    isDefault: false,
+  });
+  guiHandle?.refreshCameraLocations();
+  refreshCameraPresets();
+  updateCameraLocationMarkers();
+}
+
+function removeCameraLocation(id: string) {
+  if (cameraLocations.length <= 1) {
+    contentStatusEl.innerHTML = `<span class="err">至少保留一个摄像机位置</span>`;
+    return;
+  }
+  const index = cameraLocations.findIndex((location) => location.id === id);
+  if (index < 0) return;
+  const wasActive = activePresetId === id;
+  cameraLocations.splice(index, 1);
+  if (wasActive) activePresetId = null;
+  guiHandle?.refreshCameraLocations();
+  refreshCameraPresets();
+  updateCameraLocationMarkers();
+}
+
+function toggleDefaultCameras(visible: boolean) {
+  for (const location of cameraLocations) {
+    if (location.isDefault) location.visible = visible;
+  }
+  guiHandle?.refreshCameraLocations();
+  refreshCameraPresets();
+  updateCameraLocationMarkers();
 }
 
 function updateStats() {
@@ -860,14 +958,13 @@ function togglePlayback() {
 }
 
 // ---------------------------------------------------------------------------
-// 素材清单（manifest.json）：媒体文件本身之外的第二个输入，声明投影、视场、朝向、内容原点、色彩
-// 解释（见 src/content/ERPManifest.ts）。载入与载入媒体文件是两个独立、可任意顺序的动作——清单
-// 只负责覆盖下面这些参数，不会替用户选择或触发媒体文件的载入。
+// 场馆 / 素材参数：媒体文件本身之外的第二个输入，支持 JSON 清单、完整配置 JSON，
+// 以及 3ds Max .MAX 场馆参数。载入与载入媒体文件是两个独立、可任意顺序的动作。
 // ---------------------------------------------------------------------------
 
 const manifestFileInput = document.createElement("input");
 manifestFileInput.type = "file";
-manifestFileInput.accept = "application/json,.json";
+manifestFileInput.accept = "application/json,.json,.max,application/octet-stream";
 manifestFileInput.style.display = "none";
 document.body.appendChild(manifestFileInput);
 
@@ -897,6 +994,20 @@ manifestFileInput.addEventListener("change", () => {
   const file = manifestFileInput.files?.[0];
   manifestFileInput.value = "";
   if (!file) return;
+
+  if (file.name.toLowerCase().endsWith(".max")) {
+    file.arrayBuffer().then((bytes) => {
+      try {
+        applyMaxVenueImport(file, parseMaxScene(bytes, file.name));
+      } catch (err) {
+        contentStatusEl.innerHTML = `<span class="err">MAX 参数 ${file.name} 无效：${err instanceof Error ? err.message : String(err)}</span>`;
+      }
+    }).catch(() => {
+      contentStatusEl.innerHTML = `<span class="err">读取 ${file.name} 失败</span>`;
+    });
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = () => {
     let raw: unknown;
@@ -1053,6 +1164,7 @@ function applyConfigPayload(raw: Record<string, unknown>, filename: string) {
   Object.assign(cfg, importedCfg);
   applyVenueConfigToParams();
   applyManifest(manifestResult.manifest);
+  applyImportedCameraLocations(raw.cameraLocations);
   applyUIState(raw.uiState);
   onMediaPlaneGeometryChange();
   onVenueChange();
@@ -1063,6 +1175,34 @@ function applyConfigPayload(raw: Record<string, unknown>, filename: string) {
   applyVisibilityFromParams();
   guiHandle.refreshAllControllers();
   contentStatusEl.innerHTML = `已载入配置：<b>${filename}</b>`;
+}
+
+function applyImportedCameraLocations(raw: unknown) {
+  if (!Array.isArray(raw)) return;
+  const imported = raw.filter(isRecord).map((value, index) => {
+    const numberOr = (key: string, fallback: number) =>
+      typeof value[key] === "number" && Number.isFinite(value[key]) ? value[key] as number : fallback;
+    const id = typeof value.id === "string" && value.id ? value.id : `camera-imported-${index + 1}`;
+    return {
+      id,
+      label: typeof value.label === "string" ? value.label : `摄像机 ${index + 1}`,
+      x: numberOr("x", 0),
+      y: numberOr("y", 1.2),
+      z: numberOr("z", 0),
+      targetX: numberOr("targetX", 0),
+      targetY: numberOr("targetY", 0),
+      targetZ: numberOr("targetZ", -10),
+      fov: THREE.MathUtils.clamp(numberOr("fov", 90), 1, 179),
+      visible: value.visible !== false,
+      isDefault: value.isDefault === true,
+    } satisfies CameraLocationGUI;
+  });
+  if (imported.length === 0) return;
+  cameraLocations.splice(0, cameraLocations.length, ...imported);
+  presets = cameraLocations.map(cameraLocationToPreset);
+  guiHandle.refreshCameraLocations();
+  updateCameraLocationMarkers();
+  renderCameraBar();
 }
 
 configFileInput.addEventListener("change", () => {
@@ -1087,6 +1227,32 @@ configFileInput.addEventListener("change", () => {
 
 function requestConfigFile() {
   configFileInput.click();
+}
+
+function applyMaxVenueImport(file: File, result: ReturnType<typeof parseMaxScene>) {
+  const imported = mergeVenueConfig({
+    ...cfg,
+    ...result.venueOverrides,
+    mediaPlane: { ...cfg.mediaPlane, ...(result.venueOverrides.mediaPlane ?? {}) },
+    building: { ...cfg.building, ...(result.venueOverrides.building ?? {}) },
+  });
+  if (!imported) throw new Error("MAX 参数无法合并到当前场馆配置");
+  Object.assign(cfg, imported);
+  if (result.cameraLocations?.length) applyImportedCameraLocations(result.cameraLocations);
+  applyVenueConfigToParams();
+  onMediaPlaneGeometryChange();
+  onVenueChange();
+  guiHandle.refreshAllControllers();
+  const info = result.sceneInfo;
+  const detected = [
+    info.rendererName,
+    info.renderWidth && info.renderHeight ? `${info.renderWidth}×${info.renderHeight}` : undefined,
+    info.cameraCount !== undefined ? `${info.cameraCount} 个相机` : undefined,
+    info.vertices !== undefined ? `${info.vertices} 顶点` : undefined,
+  ].filter(Boolean).join("，");
+  const detailParts = [detected, ...result.warnings].filter(Boolean);
+  const detail = detailParts.length ? `（${detailParts.join("；")}）` : "";
+  contentStatusEl.innerHTML = `已载入 MAX 场馆参数：<b>${file.name}</b>${detail}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1176,6 +1342,12 @@ function applyPreset(preset: CameraPreset) {
   renderCameraBar();
 }
 
+function selectCameraLocation(id: string) {
+  const location = cameraLocations.find((cameraLocation) => cameraLocation.id === id);
+  if (!location || !location.visible) return;
+  applyPreset(cameraLocationToPreset(location));
+}
+
 function startFreeOrbitAt(preset: CameraPreset) {
   exitAudienceView();
   activeSeatLabel = null;
@@ -1195,6 +1367,8 @@ function startFreeOrbitAt(preset: CameraPreset) {
 function renderCameraBar() {
   cameraBar.innerHTML = "";
   for (const preset of presets) {
+    const location = cameraLocations.find((cameraLocation) => cameraLocation.id === preset.id);
+    if (!location?.visible) continue;
     const btn = document.createElement("button");
     btn.textContent = preset.label;
     if (preset.id === activePresetId) btn.classList.add("active");
@@ -1231,6 +1405,7 @@ startFreeOrbitAt(presets.find((preset) => preset.id === "rear-row") ?? presets[0
 // ---------------------------------------------------------------------------
 
 const seatRaycaster = new THREE.Raycaster();
+const cameraMarkerRaycaster = new THREE.Raycaster();
 const seatPointerNDC = new THREE.Vector2();
 let seatPointerDown: { x: number; y: number } | null = null;
 
@@ -1244,7 +1419,7 @@ function getSeatReferenceFrame() {
   const domeCenter = new THREE.Vector3(cfg.mediaPlane.centerOffsetX, cfg.mediaPlane.centerHeight, cfg.mediaPlane.centerOffsetZ);
   const stageCenterZ = -(cfg.stage.frontOffset + cfg.stage.depth / 2);
   const seatTarget = new THREE.Vector3(0, cfg.mediaPlane.radius * 0.2, stageCenterZ + cfg.audience.offsetY);
-  const central = presets.find((p) => p.id === "central")!;
+  const central = presets.find((p) => p.id === "central") ?? presets[0] ?? computeCameraPresets(cfg)[0];
   const centralForward = central.target.clone().sub(central.position).normalize();
   const referencePoint = intersectDomeRay(central.position, centralForward, domeCenter, cfg.mediaPlane.radius) ?? central.target;
   return { domeCenter, seatTarget, referencePoint, centralEye: central.position };
@@ -1352,6 +1527,20 @@ renderer.domElement.addEventListener("pointerup", (ev) => {
   seatPointerNDC.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
   seatRaycaster.setFromCamera(seatPointerNDC, camera);
 
+  cameraMarkerRaycaster.setFromCamera(seatPointerNDC, camera);
+  const cameraHits = cameraMarkerRaycaster.intersectObject(cameraLocationMarkers, true);
+  if (cameraHits.length > 0) {
+    let marker: THREE.Object3D | null = cameraHits[0].object;
+    while (marker && marker !== cameraLocationMarkers && marker.userData.cameraLocationId === undefined) {
+      marker = marker.parent;
+    }
+    const cameraId = marker?.userData.cameraLocationId;
+    if (typeof cameraId === "string") {
+      selectCameraLocation(cameraId);
+      return;
+    }
+  }
+
   const hits = seatRaycaster.intersectObject(seatMesh, false);
   if (hits.length === 0 || hits[0].instanceId === undefined) return;
   selectSeat(hits[0].instanceId);
@@ -1427,6 +1616,7 @@ function onPlacementModeChange() {
   const editing = params.placementMode === "edit";
   centerHandle.visible = editing;
   tiltHandle.visible = editing;
+  cameraLocationMarkers.visible = editing;
   bundle.diagnostics.audienceMarkers.visible = params.showAudienceMarkers && isFreeOrbit && editing;
   updateModeStatus();
   applyMediaSolidLook();
@@ -1608,6 +1798,7 @@ function exportConfigJSON() {
       colorSpace: params.contentColorSpace,
       originOffset: { x: params.contentOriginX, y: params.contentOriginY, z: params.contentOriginZ },
     },
+    cameraLocations,
     // Live preview/UI parameters that are not part of VenueConfig or the content manifest.
     uiState: {
       opacity: params.opacity,
@@ -1991,7 +2182,78 @@ function drawAdjustedVideoFrame(video: HTMLVideoElement, output: HTMLCanvasEleme
   target.putImageData(outputImage, 0, 0);
 }
 
+async function exportAdjustedVideoWithFfmpeg() {
+  if (!currentVideoEl || !desktopBridge?.startVideoExport || !desktopBridge.writeVideoExportFrame || !desktopBridge.finishVideoExport) return;
+  if (!Number.isFinite(currentVideoEl.duration) || currentVideoEl.duration <= 0) {
+    contentStatusEl.innerHTML = `<span class="err">请先载入可播放的视频素材。</span>`;
+    return;
+  }
+
+  const sourceWidth = currentVideoEl.videoWidth;
+  const sourceHeight = currentVideoEl.videoHeight;
+  const width = sourceWidth;
+  const height = Math.max(1, Math.round(width / 2));
+  const output = document.createElement("canvas");
+  output.width = width;
+  output.height = height;
+  const scratch = document.createElement("canvas");
+  scratch.width = sourceWidth;
+  scratch.height = sourceHeight;
+  const fps = Math.max(1, params.signalFrameRateFps);
+  const session = await desktopBridge.startVideoExport();
+  const oldTime = currentVideoEl.currentTime;
+  const oldPaused = currentVideoEl.paused;
+  const oldLoop = currentVideoEl.loop;
+  let frameIndex = 0;
+  let finishing = false;
+
+  const restore = () => {
+    currentVideoEl!.currentTime = oldTime;
+    currentVideoEl!.loop = oldLoop;
+    if (!oldPaused) void currentVideoEl!.play();
+  };
+  const finish = async () => {
+    if (finishing) return;
+    finishing = true;
+    currentVideoEl!.pause();
+    currentVideoEl!.removeEventListener("ended", onEnded);
+    try {
+      const result = await desktopBridge!.finishVideoExport!(session.id, fps);
+      restore();
+      contentStatusEl.innerHTML = result.cancelled
+        ? "已取消 ERP 视频导出。"
+        : `已导出无损 ERP 视频：<b>${width}×${height} MP4</b>`;
+    } catch (error) {
+      restore();
+      contentStatusEl.innerHTML = `<span class="err">无损 MP4 导出失败：${error instanceof Error ? error.message : String(error)}</span>`;
+    }
+  };
+  const onEnded = () => { void finish(); };
+  currentVideoEl.addEventListener("ended", onEnded, { once: true });
+  currentVideoEl.currentTime = 0;
+  currentVideoEl.loop = false;
+  contentStatusEl.innerHTML = "正在导出无损 ERP 帧并编码 MP4，请等待视频播放完成…";
+  await currentVideoEl.play();
+
+  const renderFrame = async () => {
+    if (finishing) return;
+    drawAdjustedVideoFrame(currentVideoEl!, output, scratch);
+    const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("浏览器无法生成无损 PNG 帧");
+    await desktopBridge!.writeVideoExportFrame!(session.id, frameIndex++, new Uint8Array(await blob.arrayBuffer()));
+    if (!finishing) window.requestAnimationFrame(() => { void renderFrame(); });
+  };
+  void renderFrame().catch((error) => {
+    contentStatusEl.innerHTML = `<span class="err">无损帧导出失败：${error instanceof Error ? error.message : String(error)}</span>`;
+    void finish();
+  });
+}
+
 function exportAdjustedVideo() {
+  if (desktopBridge?.isDesktop && desktopBridge.startVideoExport) {
+    void exportAdjustedVideoWithFfmpeg();
+    return;
+  }
   if (!currentVideoEl || !Number.isFinite(currentVideoEl.duration) || currentVideoEl.duration <= 0) {
     contentStatusEl.innerHTML = `<span class="err">请先载入可播放的视频素材。</span>`;
     return;
@@ -2097,6 +2359,12 @@ const guiHandle = createGUIPanel({
   onTogglePlayback: togglePlayback,
   onRequestManifestFile: requestManifestFile,
   onRequestConfigFile: requestConfigFile,
+  cameraLocations,
+  onCameraLocationChange: syncCameraPreset,
+  onSelectCameraLocation: selectCameraLocation,
+  onAddCameraLocation: addCameraLocation,
+  onRemoveCameraLocation: removeCameraLocation,
+  onToggleDefaultCameras: toggleDefaultCameras,
   onContentParamsChange,
   onLedPixelateChange,
   onContentWarpChange,

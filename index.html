@@ -194,6 +194,51 @@
         font-weight: 600;
       }
 
+      /* Editable camera coordinate rows inserted into the lil-gui camera folders. */
+      .camera-vector-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-height: 28px;
+        padding: 2px 4px;
+      }
+      .camera-vector-row .name {
+        flex: 1 1 auto;
+        min-width: 74px;
+        color: #aaa;
+        font-size: 11px;
+      }
+      .camera-vector-row input {
+        width: 54px;
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 3px 4px;
+        border: 1px solid #444;
+        border-radius: 3px;
+        background: #202020;
+        color: #eee;
+        font: inherit;
+      }
+      .camera-actions-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        padding: 6px 4px 8px;
+      }
+      .camera-actions-row button {
+        border: 1px solid #555;
+        border-radius: 3px;
+        padding: 3px 8px;
+        background: #292929;
+        color: #eee;
+        cursor: pointer;
+        font: inherit;
+      }
+      .camera-actions-row button:first-child {
+        border-color: #d9822b;
+        color: #ffb454;
+      }
+
       #status-stack {
         display: flex;
         flex-direction: column;

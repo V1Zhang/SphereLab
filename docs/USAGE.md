@@ -17,7 +17,7 @@ pnpm run typecheck
 
 - 左上角：标题与实时统计，默认收起，点「展开」查看。
 - 右上角：`SphereLab · 控制面板`，默认收起，点标题展开。
-- 左下角：相机机位切换；也可以直接拖拽自由环视。
+- 顶部：相机机位切换；右侧「摄像机位置」可自由新增、删除和编辑位置坐标、目标点与 FOV。原来的中央/前排/后排/左右侧作为默认摄像机保留，也可以用「显示默认摄像机」批量隐藏；也可以直接拖拽自由环视。
 - 右下角：Pointer Inspector，鼠标悬停球幕时显示 yaw / pitch / 素材采样 UV。
 
 未加载素材时，内屏显示为透明纯色球；载入素材并切到「预演模式」后显示实际贴图。
@@ -41,6 +41,7 @@ pnpm run typecheck
 - `projection` 支持 `equirectangular`、`perspective`、`fisheyeEquidistant`、`fisheyeEquisolid`、`domemaster`、`cylindrical`。
 - FOV、Yaw/Pitch、镜像、色彩解释、内容原点 X/Y/Z 都会实时影响贴图。
 - 「载入素材清单（JSON）」可一次性覆盖这些参数，示例见 [`docs/examples/`](./examples/)。
+- 「载入场馆参数（3ds Max .MAX）」可读取 3ds Max 场景的 SphereLab 参数块；对于类似 `40m-05.max` 的文件名，还会将口径线索 `40m` 换算为球幕半径 20 m。原生 `.max` 是二进制场景格式，未导出的任意 3ds Max 节点尺寸不会被浏览器擅自反推，其余参数保持当前值并在状态栏提示。
 
 ## 调整场景
 

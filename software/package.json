@@ -1,6 +1,6 @@
 {
   "name": "spherelab-desktop",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "SphereLab desktop wrapper",
   "main": "main.cjs",
@@ -25,6 +25,10 @@
       {
         "from": "app-dist",
         "to": "app-dist"
+      },
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg"
       }
     ],
     "linux": {
@@ -33,6 +37,12 @@
         "tar.gz"
       ],
       "category": "Graphics"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.graphics-design",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "hardenedRuntime": true
     }
   },
   "devDependencies": {

@@ -124,13 +124,18 @@ export interface GUIPanelDeps {
   onRequestFile: () => void;
   onResetPlaceholder: () => void;
   onTogglePlayback: () => void;
-  /** Opens a file picker for a manifest.json that overwrites all 素材参数 fields (see
-   *  src/content/ERPManifest.ts `parseManifest`); rejected (missing/unsupported `projection`,
-   *  bad field) manifests leave the current params untouched. */
+  /** Opens the unified JSON/MAX venue and content parameter picker. */
   onRequestManifestFile: () => void;
   /** Opens a file picker for the JSON produced by "导出当前配置（JSON）" and restores both
    *  venueConfig and contentManifest from that same envelope. */
   onRequestConfigFile: () => void;
+  /** Camera locations are editable, user-managed viewpoints shown in the right panel. */
+  cameraLocations: CameraLocationGUI[];
+  onCameraLocationChange: (location: CameraLocationGUI) => void;
+  onSelectCameraLocation: (id: string) => void;
+  onAddCameraLocation: () => void;
+  onRemoveCameraLocation: (id: string) => void;
+  onToggleDefaultCameras: (visible: boolean) => void;
   /** Any 素材参数 slider/dropdown changed — geometric mapping (FOV/offset/flip/origin) applies
    *  live to the shader; colorSpace applies to the currently-loaded texture. Both are cheap, so
    *  one combined handler covers every field instead of six near-identical callbacks. */
@@ -164,8 +169,23 @@ export interface GUIPanelDeps {
   onExportAdjustedVideo: () => void;
 }
 
+export interface CameraLocationGUI {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  fov: number;
+  visible: boolean;
+  isDefault: boolean;
+}
+
 export interface GUIPanelHandle {
   gui: GUI;
+  refreshCameraLocations: () => void;
   /** Call after programmatically overwriting `params.content*` (e.g. a manifest.json just loaded)
    *  so the sliders/dropdowns reflect the new values — lil-gui doesn't watch the bound object. */
   refreshContentControllers: () => void;
@@ -185,9 +205,82 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   // 载入一份等距柱状（ERP）全景视频/图片直接贴到球幕；未加载时显示程序生成的校准占位图。
   const content = gui.addFolder("素材 / 占位图").open();
   content.add({ load: deps.onRequestFile }, "load").name("载入素材（视频 / 图片 / EXR / HDR）");
-  content.add({ loadManifest: deps.onRequestManifestFile }, "loadManifest").name("载入素材清单（JSON）…");
+  content.add({ loadParameters: deps.onRequestManifestFile }, "loadParameters").name("载入场馆 / 素材参数（JSON / MAX）…");
   content.add({ reset: deps.onResetPlaceholder }, "reset").name("恢复占位校准图");
   content.add({ toggle: deps.onTogglePlayback }, "toggle").name("播放 / 暂停视频");
+
+  const cameras = gui.addFolder("摄像机位置").close();
+  cameras.add({ add: deps.onAddCameraLocation }, "add").name("新增摄像机位置");
+  const defaultCameraVisibility = { visible: deps.cameraLocations.some((camera) => camera.isDefault && camera.visible) };
+  cameras
+    .add(defaultCameraVisibility, "visible")
+    .name("显示默认摄像机")
+    .onChange((visible: boolean) => deps.onToggleDefaultCameras(visible));
+  const cameraControllers: Controller[] = [];
+  const cameraFolders: GUI[] = [];
+
+  const addVectorRow = (
+    folder: GUI,
+    label: string,
+    fields: ["x", "y", "z"] | ["targetX", "targetY", "targetZ"],
+    location: CameraLocationGUI,
+    notify: () => void,
+  ) => {
+    const children = folder.domElement.querySelector(".children");
+    if (!children) return;
+    const row = document.createElement("div");
+    row.className = "controller camera-vector-row";
+    const labelEl = document.createElement("span");
+    labelEl.className = "name";
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+    for (const field of fields) {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "any";
+      input.value = String(location[field]);
+      input.title = field;
+      input.addEventListener("change", () => {
+        const value = Number(input.value);
+        if (!Number.isFinite(value)) return;
+        location[field] = value;
+        notify();
+      });
+      row.appendChild(input);
+    }
+    children.appendChild(row);
+  };
+
+  const renderCameraLocations = () => {
+    defaultCameraVisibility.visible = deps.cameraLocations.some((camera) => camera.isDefault && camera.visible);
+    for (const controller of cameraControllers.splice(0)) controller.destroy();
+    for (const folder of cameraFolders.splice(0)) folder.destroy();
+    for (const location of deps.cameraLocations) {
+      const folder = cameras.addFolder(location.label || "未命名摄像机").close();
+      cameraFolders.push(folder);
+      const notify = () => deps.onCameraLocationChange(location);
+      cameraControllers.push(
+        folder.add(location, "visible").name("启用").onChange(notify),
+        folder.add(location, "label").name("名称").onFinishChange(notify),
+        folder.add(location, "fov").name("视场 FOV（°）").onFinishChange(notify),
+      );
+      addVectorRow(folder, "位置 XYZ（m）", ["x", "y", "z"], location, notify);
+      addVectorRow(folder, "目标 XYZ（m）", ["targetX", "targetY", "targetZ"], location, notify);
+      const actions = document.createElement("div");
+      actions.className = "camera-actions-row";
+      const select = document.createElement("button");
+      select.type = "button";
+      select.textContent = "选中";
+      select.addEventListener("click", () => deps.onSelectCameraLocation(location.id));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "删除此摄像机";
+      remove.addEventListener("click", () => deps.onRemoveCameraLocation(location.id));
+      actions.append(select, remove);
+      folder.domElement.querySelector(".children")?.appendChild(actions);
+    }
+  };
+  renderCameraLocations();
 
   // 素材参数 / 清单（Manifest）：投影类型描述 2D 素材自身的预变形格式；同一批 FOV/朝向/原点参数
   // 会按该格式解释，便于把 ERP、鱼眼、柱面等离线变形结果投到同一个 3D 球幕上比较。
@@ -366,6 +459,45 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   signalSpec.add(p, "signalAudioFormat").name("音频规格").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalLoudnessLufs", -60, 0, 0.1).name("响度（LUFS）").onChange(deps.onDisplaySpecChange);
 
+  // 只读的 3ds Max 场景信息放在所有可编辑控制项之后，作为参数参考目录。
+  // 当前 WebGL 预演器不直接复现 Corona 材质，因此不会把这些说明误认为可编辑参数。
+  const addReadOnly = (folder: GUI, label: string, value: string) => {
+    const controller = folder.add({ value }, "value").name(label);
+    controller.disable();
+  };
+  const maxScene = gui.addFolder("3ds Max 场景信息").close();
+  const sceneInfo = maxScene.addFolder("场景与文件").close();
+  addReadOnly(sceneInfo, "3ds Max 版本", "24.00");
+  addReadOnly(sceneInfo, "Build", "24.3.0.3404");
+  addReadOnly(sceneInfo, "顶点数", "6785");
+  addReadOnly(sceneInfo, "场景状态集", "State01");
+  addReadOnly(sceneInfo, "渲染器", "Corona 11");
+  addReadOnly(sceneInfo, "动画范围", "第 0 帧 – 第 0 帧（静帧）");
+
+  const outputInfo = maxScene.addFolder("渲染输出").close();
+  addReadOnly(outputInfo, "输出尺寸", "4000 × 2000 px");
+  addReadOnly(outputInfo, "文件格式", "TGA");
+  addReadOnly(outputInfo, "输出路径模板", "renderoutput\\<StateName>\\<StateName>_output.tga");
+  addReadOnly(outputInfo, "渲染相机", "Camera001、Camera002、Camera003、Camera004、Camera005");
+
+  const materialInfo = maxScene.addFolder("材质参数目录").close();
+  addReadOnly(materialInfo, "材质类型", "Physical Material、CoronaLightMtl、Standard Material");
+  addReadOnly(materialInfo, "基础与表面", "Base Color、Metalness、Roughness、Reflection、Refraction、IOR、Opacity、Glossiness、Anisotropy、Anisotropy Rotation");
+  addReadOnly(materialInfo, "高级表面", "Clearcoat、Sheen、SSS、Volume Absorption、Volume Scattering、Bump、Displacement、Self-Illumination");
+  addReadOnly(materialInfo, "材质贴图", "色彩、透明度、反射、折射贴图");
+
+  const textureInfo = maxScene.addFolder("纹理与贴图参数").close();
+  addReadOnly(textureInfo, "坐标变换", "U/V Offset、U/V Tiling、U/V/W Angle");
+  addReadOnly(textureInfo, "纹理处理", "Blur、Noise Amount、Noise Size、Noise Levels、Phase");
+  addReadOnly(textureInfo, "输出控制", "RGB Level、RGB Offset、Output Amount、Bump Amount");
+  addReadOnly(textureInfo, "裁切与抖动", "Clip U/V Offset、Clip U/V Width、Jitter Placement");
+
+  const coronaInfo = maxScene.addFolder("Corona 灯光参数").close();
+  addReadOnly(coronaInfo, "光源属性", "Intensity、Color、Directionality");
+  addReadOnly(coronaInfo, "发光方式", "Emit Light、Emit on Both Sides");
+  addReadOnly(coronaInfo, "可见性", "显示在反射中、显示在折射中、直接可见、参与焦散");
+  addReadOnly(coronaInfo, "遮挡与透明度", "遮挡其他灯光、可见性与透明度控制");
+
   const refreshContentControllers = () => {
     for (const c of contentControllers) c.updateDisplay();
     for (const c of contentOffsetControllers) c.updateDisplay();
@@ -373,5 +505,5 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
   const refreshAllControllers = () => {
     for (const c of gui.controllersRecursive()) c.updateDisplay();
   };
-  return { gui, refreshContentControllers, refreshAllControllers };
+  return { gui, refreshCameraLocations: renderCameraLocations, refreshContentControllers, refreshAllControllers };
 }

@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { VenueConfig } from "../core/VenueConfig";
-import { audienceSeatWorldPosition } from "../core/VenueGeometry";
 import { sampleBoundaryCurve } from "../core/ScreenMask";
 import { yawPitchToDirection } from "../utils/SphericalMath";
 
@@ -181,6 +180,22 @@ export function buildEyePositionMarker(): THREE.Object3D {
   return group;
 }
 
+/** A clickable marker for a user-managed camera location. */
+export function buildCameraLocationMarker(label: string): THREE.Group {
+  const group = new THREE.Group();
+  const marker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0x4da6ff, depthTest: false, depthWrite: false }),
+  );
+  marker.renderOrder = 997;
+  group.add(marker);
+  const text = makeTextSprite(label, "#4da6ff");
+  text.position.set(0, 0.9, 0);
+  group.add(text);
+  group.userData.cameraLocationMarker = true;
+  return group;
+}
+
 /**
  * Visualizes the project brief's eq. (7) for whatever point the pointer is currently hovering on
  * the media plane: p = Intersect(e, r, S) — the cyan sightline from eye `e` to that hit point `p`
@@ -240,30 +255,6 @@ function buildStageDirectionArrow(cfg: VenueConfig, center: THREE.Vector3): THRE
 
 function buildAudienceMarkers(cfg: VenueConfig): THREE.Object3D {
   const group = new THREE.Group();
-  const midRadius = (cfg.audience.innerRadius + cfg.audience.outerRadius) / 2;
-
-  // These labels sit on the same representative positions used by CameraPresets.ts, so the
-  // visual annotation and the camera buttons always refer to the same four locations.
-  const representativePositions = [
-    { label: "前排代表位置", azDeg: 0, radius: cfg.audience.innerRadius, color: "#4fd1c5" },
-    { label: "后排代表位置", azDeg: 0, radius: cfg.audience.outerRadius, color: "#ffb454" },
-    { label: "左侧代表位置", azDeg: -45, radius: midRadius, color: "#8ab4ff" },
-    { label: "右侧代表位置", azDeg: 45, radius: midRadius, color: "#c58aff" },
-  ];
-  for (const marker of representativePositions) {
-    const position = audienceSeatWorldPosition(marker.azDeg, marker.radius, cfg);
-    const point = new THREE.Mesh(
-      new THREE.SphereGeometry(0.45, 16, 12),
-      new THREE.MeshBasicMaterial({ color: marker.color }),
-    );
-    point.position.copy(position).add(new THREE.Vector3(0, 0.55, 0));
-    group.add(point);
-
-    const label = makeTextSprite(marker.label, marker.color);
-    label.position.copy(position).add(new THREE.Vector3(0, 2.3, 0));
-    group.add(label);
-  }
-
   const stage = makeTextSprite("舞台", "#ff6b6b");
   stage.position.set(0, cfg.stage.height + 3, -(cfg.stage.frontOffset + cfg.stage.depth / 2) + cfg.audience.offsetY);
   group.add(stage);

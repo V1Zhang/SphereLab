@@ -26,10 +26,11 @@ SphereLab 是一个纯前端球幕预演器：用 three.js 渲染参数化场馆
 | 场馆几何 | `src/core/VenueGeometry.ts` | 构建舞台、观众席、代表性座位、外壳和可用于遮挡判定的几何。 |
 | 座位指标 | `src/core/SeatMetrics.ts` | 单座位覆盖率、视线偏移、批量座位分析和 CSV 序列化。 |
 | 素材清单 | `src/content/ERPManifest.ts` | `manifest.json` schema、投影类型、字段校验和默认值。 |
+| 3ds Max 参数导入 | `src/content/MaxScene.ts` | 识别 3ds Max Compound File、读取 SphereLab 参数块，并从文件名口径线索生成保守的球幕半径提示。 |
 | 占位内容 | `src/content/PlaceholderERP.ts` | 程序生成的校准图。 |
 | 内容映射材质 | `src/materials/ERPMaskMaterial.ts` | shader 中完成内容采样、FOV 裁切、Mask、LED 像素化预览和参考眼位校正。 |
 | 场景装配 | `src/scene/SceneBuilder.ts` | 创建 three.js scene、内屏、非显示区、场馆和诊断层。 |
-| 相机预设 | `src/scene/CameraPresets.ts` | 中央、前排、后排、左右侧、后方仰视等观众视角。 |
+| 相机位置 | `src/main.ts` `src/diagnostics/GUIPanel.ts` | 右侧可编辑、增删和批量隐藏的摄像机位置列表；中央/前排/后排/左右侧仅作为初始默认值。 |
 | 诊断图层 | `src/diagnostics/DiagnosticsOverlay.ts` | 边界线、网格、球心、内容原点、当前眼位、射线示意等可视化。 |
 | GUI 面板 | `src/diagnostics/GUIPanel.ts` | lil-gui 控制面板、素材载入、参数滑杆、图层开关、分析和导出按钮。 |
 | 应用入口 | `src/main.ts` | 渲染循环、文件载入、参数同步、点击座位、座位观众模式、拖拽内屏、导出和 HUD 更新。 |

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog, shell, ipcMain } = require("electron");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
@@ -7,6 +8,7 @@ const { pathToFileURL } = require("node:url");
 
 let server;
 let serverUrl;
+const videoExportSessions = new Map();
 
 ipcMain.handle("import-media", async (_event, sourcePath) => {
   if (typeof sourcePath !== "string" || !path.isAbsolute(sourcePath)) throw new Error("invalid media path");
@@ -15,6 +17,76 @@ ipcMain.handle("import-media", async (_event, sourcePath) => {
   const filename = path.basename(sourcePath);
   await fs.promises.copyFile(sourcePath, path.join(mediaRoot, filename));
   return { source: `/data/media/${filename}`, filename };
+});
+
+function ffmpegCandidates() {
+  const bundled = app.isPackaged
+    ? path.join(process.resourcesPath, "ffmpeg", process.arch, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg")
+    : path.join(__dirname, "vendor", "ffmpeg", process.arch, process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+  return [process.env.SPHERELAB_FFMPEG, bundled, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "ffmpeg"].filter(Boolean);
+}
+
+async function resolveFfmpeg() {
+  for (const candidate of ffmpegCandidates()) {
+    if (candidate === "ffmpeg") return candidate;
+    try {
+      await fs.promises.access(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Try the next bundled or common installation path.
+    }
+  }
+  throw new Error("找不到 FFmpeg。请安装 FFmpeg，或设置 SPHERELAB_FFMPEG 环境变量。");
+}
+
+ipcMain.handle("video-export-start", async () => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "spherelab-erp-export-"));
+  const id = path.basename(directory);
+  videoExportSessions.set(id, { directory });
+  return { id };
+});
+
+ipcMain.handle("video-export-frame", async (_event, id, frameIndex, bytes) => {
+  const session = videoExportSessions.get(id);
+  if (!session || !Number.isInteger(frameIndex) || !(bytes instanceof Uint8Array)) throw new Error("无效的视频导出帧");
+  const filename = path.join(session.directory, `frame-${String(frameIndex).padStart(6, "0")}.png`);
+  await fs.promises.writeFile(filename, Buffer.from(bytes));
+});
+
+ipcMain.handle("video-export-finish", async (_event, id, fps) => {
+  const session = videoExportSessions.get(id);
+  if (!session) throw new Error("视频导出会话不存在");
+  videoExportSessions.delete(id);
+  try {
+    const ffmpeg = await resolveFfmpeg();
+    const result = await dialog.showSaveDialog({
+      title: "导出无损 ERP 视频",
+      defaultPath: path.join(os.homedir(), `spherelab-adjusted-video-${Date.now()}.mp4`),
+      filters: [{ name: "MP4 视频", extensions: ["mp4"] }],
+    });
+    if (result.canceled || !result.filePath) return { cancelled: true };
+    await new Promise((resolve, reject) => {
+      const child = spawn(ffmpeg, [
+        "-hide_banner", "-loglevel", "error",
+        "-framerate", String(Math.max(1, Number(fps) || 30)),
+        "-i", path.join(session.directory, "frame-%06d.png"),
+        "-an",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-qp", "0",
+        "-pix_fmt", "yuv444p",
+        "-movflags", "+faststart",
+        "-y", result.filePath,
+      ]);
+      let stderr = "";
+      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+      child.on("error", reject);
+      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr || `FFmpeg exited with code ${code}`)));
+    });
+    return { cancelled: false, path: result.filePath };
+  } finally {
+    await fs.promises.rm(session.directory, { recursive: true, force: true });
+  }
 });
 
 function appDistDir() {
@@ -146,7 +218,7 @@ async function createWindow() {
   // Desktop builds default to the local NVIDIA server so the user can launch the AppImage from
   // the desktop without first opening a terminal. An environment variable still allows a remote
   // or non-default server during testing.
-  const serverPreview = process.env.SPHERELAB_SERVER_URL || "http://127.0.0.1:8787";
+  const serverPreview = process.env.SPHERELAB_SERVER_URL || (process.platform === "linux" ? "http://127.0.0.1:8787" : "");
   const appUrl = serverPreview
     ? `${serverUrl}/?desktopServer=${encodeURIComponent(serverPreview)}`
     : serverUrl;
