@@ -4,6 +4,32 @@ This directory contains the macOS/Linux desktop application for SphereLab. It pa
 
 The Linux/NVIDIA server runtime lives in [`../server/`](../server/README.md). Linux builds can connect to that local native stream; macOS builds use the normal local browser decoder and local FFmpeg export.
 
+## macOS signed release
+
+A DMG alone is not enough for Gatekeeper. The macOS application must be signed with an
+`Developer ID Application` certificate and notarized by Apple. The release machine also needs an
+Apple app-specific password and the Developer Team ID.
+
+Verify that the signing certificate and private key are installed:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+After installing the certificate, build the Apple Silicon release from this directory:
+
+```bash
+export CSC_IDENTITY_AUTO_DISCOVERY=true
+export APPLE_ID="your-apple-id@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="YOUR_TEAM_ID"
+npm run release:mac
+```
+
+electron-builder will sign the app, submit it for notarization, staple the ticket, and produce a
+trusted DMG and ZIP under `release/`. Never commit these environment values. For Intel Macs use
+`--x64` instead of `--arm64`; use `--universal` for one package supporting both architectures.
+
 ## Directory Boundary
 
 Files under `software/` are the only files needed for the desktop wrapper:
@@ -79,7 +105,7 @@ This copies the latest root `dist/` into `software/app-dist/` before packaging.
 
 ## High-quality local video export
 
-The desktop build renders ERP frames as lossless PNG files and asks the local FFmpeg process to encode them as a mathematically lossless H.264 MP4 (`-qp 0`, `yuv444p`). This avoids the browser `MediaRecorder` path and is intended for QuickTime-compatible desktop workflows. The bundled Apple Silicon build includes an arm64 FFmpeg binary.
+The desktop build renders ERP frames as lossless PNG files and asks the local FFmpeg process to encode them as a mathematically lossless HEVC MP4 (`libx265`, `lossless=1`, `yuv444p`, `hvc1`). This avoids the browser `MediaRecorder` path. The bundled Apple Silicon build includes an arm64 FFmpeg binary with `libx265`.
 
 ## Server-native preview
 

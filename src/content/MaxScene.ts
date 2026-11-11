@@ -47,6 +47,8 @@ export type MaxCameraLocation = {
   targetY: number;
   targetZ: number;
   fov: number;
+  near: number;
+  far: number;
   visible: boolean;
   isDefault: boolean;
 };

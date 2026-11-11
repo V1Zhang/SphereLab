@@ -42,9 +42,9 @@ const desktopBridge = (window as Window & { sphereLabDesktop?: {
   isDesktop?: boolean;
   getPathForFile(file: File): string;
   importMedia(filePath: string): Promise<{ source: string; filename: string }>;
-  startVideoExport?: () => Promise<{ id: string }>;
+  startVideoExport?: (fps: number) => Promise<{ id: string; cancelled?: boolean }>;
   writeVideoExportFrame?: (id: string, frameIndex: number, bytes: Uint8Array) => Promise<void>;
-  finishVideoExport?: (id: string, fps: number) => Promise<{ cancelled: boolean; path?: string }>;
+  finishVideoExport?: (id: string) => Promise<{ cancelled: boolean; path?: string }>;
 } }).sphereLabDesktop;
 
 // Left-stack collapse toggle: starts collapsed (index.html ships #top-left-stack with the
@@ -103,6 +103,8 @@ const cameraLocations: CameraLocationGUI[] = computeCameraPresets(cfg).map((pres
   targetY: preset.target.y,
   targetZ: preset.target.z,
   fov: preset.fov,
+  near: preset.near,
+  far: preset.far,
   visible: true,
   isDefault: true,
 }));
@@ -228,6 +230,7 @@ const params: GUIParams = {
   ledViewingAngleV: cfg.led.verticalViewingAngleDeg,
   ledLifetimeHours: cfg.led.ledLifetimeHours,
   signalFrameRateFps: cfg.signal.videoFrameRateFps,
+  exportFrameRateFps: cfg.signal.videoFrameRateFps,
   signalScanMode: cfg.signal.scanMode,
   signalBitDepth: cfg.signal.bitDepth,
   signalChroma: cfg.signal.chromaSubsampling,
@@ -331,6 +334,8 @@ function cameraLocationToPreset(location: CameraLocationGUI): CameraPreset {
     position: new THREE.Vector3(location.x, location.y, location.z),
     target: new THREE.Vector3(location.targetX, location.targetY, location.targetZ),
     fov: THREE.MathUtils.clamp(location.fov, 1, 179),
+    near: Math.max(0.001, Number.isFinite(location.near) ? location.near : 0.1),
+    far: Math.max(1, Number.isFinite(location.far) ? location.far : 500),
     cutaway: false,
   };
 }
@@ -357,6 +362,8 @@ function addCameraLocation() {
     targetY: source?.target.y ?? 0,
     targetZ: source?.target.z ?? -10,
     fov: source?.fov ?? 90,
+    near: source?.near ?? 0.1,
+    far: source?.far ?? 500,
     visible: true,
     isDefault: false,
   });
@@ -1193,6 +1200,8 @@ function applyImportedCameraLocations(raw: unknown) {
       targetY: numberOr("targetY", 0),
       targetZ: numberOr("targetZ", -10),
       fov: THREE.MathUtils.clamp(numberOr("fov", 90), 1, 179),
+      near: Math.max(0.001, numberOr("near", 0.1)),
+      far: Math.max(1, numberOr("far", 500)),
       visible: value.visible !== false,
       isDefault: value.isDefault === true,
     } satisfies CameraLocationGUI;
@@ -1329,6 +1338,8 @@ function applyPreset(preset: CameraPreset) {
   activeSeatLabel = null;
   camera.position.copy(preset.position);
   camera.fov = preset.fov;
+  camera.near = preset.near;
+  camera.far = preset.far;
   camera.updateProjectionMatrix();
 
   syncCutawayState(preset.cutaway);
@@ -1355,6 +1366,8 @@ function startFreeOrbitAt(preset: CameraPreset) {
   isFreeOrbit = true;
   camera.position.copy(preset.position);
   camera.fov = preset.fov;
+  camera.near = preset.near;
+  camera.far = preset.far;
   camera.updateProjectionMatrix();
   controls.target.copy(preset.target);
   controls.update();
@@ -2199,12 +2212,16 @@ async function exportAdjustedVideoWithFfmpeg() {
   const scratch = document.createElement("canvas");
   scratch.width = sourceWidth;
   scratch.height = sourceHeight;
-  const fps = Math.max(1, params.signalFrameRateFps);
-  const session = await desktopBridge.startVideoExport();
+  const fps = Math.max(1, params.exportFrameRateFps);
+  const frameCount = Math.max(1, Math.ceil(currentVideoEl.duration * fps));
+  const session = await desktopBridge.startVideoExport(fps);
+  if (session.cancelled) {
+    contentStatusEl.innerHTML = "已取消 ERP 视频导出。";
+    return;
+  }
   const oldTime = currentVideoEl.currentTime;
   const oldPaused = currentVideoEl.paused;
   const oldLoop = currentVideoEl.loop;
-  let frameIndex = 0;
   let finishing = false;
 
   const restore = () => {
@@ -2216,34 +2233,64 @@ async function exportAdjustedVideoWithFfmpeg() {
     if (finishing) return;
     finishing = true;
     currentVideoEl!.pause();
-    currentVideoEl!.removeEventListener("ended", onEnded);
     try {
-      const result = await desktopBridge!.finishVideoExport!(session.id, fps);
+      const result = await desktopBridge!.finishVideoExport!(session.id);
       restore();
       contentStatusEl.innerHTML = result.cancelled
         ? "已取消 ERP 视频导出。"
-        : `已导出无损 ERP 视频：<b>${width}×${height} MP4</b>`;
+        : `已导出 HEVC 无损 ERP 视频：<b>${width}×${height} MP4</b>`;
     } catch (error) {
       restore();
       contentStatusEl.innerHTML = `<span class="err">无损 MP4 导出失败：${error instanceof Error ? error.message : String(error)}</span>`;
     }
   };
-  const onEnded = () => { void finish(); };
-  currentVideoEl.addEventListener("ended", onEnded, { once: true });
-  currentVideoEl.currentTime = 0;
-  currentVideoEl.loop = false;
-  contentStatusEl.innerHTML = "正在导出无损 ERP 帧并编码 MP4，请等待视频播放完成…";
-  await currentVideoEl.play();
+  const seekVideoFrame = (time: number) => new Promise<void>((resolve, reject) => {
+    const video = currentVideoEl!;
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`定位视频帧超时（${time.toFixed(3)} 秒）`));
+    }, 10_000);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener("seeked", onSeeked);
+    };
+    const onSeeked = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    video.addEventListener("seeked", onSeeked, { once: true });
+    video.currentTime = time;
+    // Chromium may not emit seeked when the requested time is already current.
+    if (Math.abs(video.currentTime - time) < 0.0001 && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      queueMicrotask(onSeeked);
+    }
+  });
 
-  const renderFrame = async () => {
-    if (finishing) return;
-    drawAdjustedVideoFrame(currentVideoEl!, output, scratch);
-    const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("浏览器无法生成无损 PNG 帧");
-    await desktopBridge!.writeVideoExportFrame!(session.id, frameIndex++, new Uint8Array(await blob.arrayBuffer()));
-    if (!finishing) window.requestAnimationFrame(() => { void renderFrame(); });
+  currentVideoEl.pause();
+  currentVideoEl.loop = false;
+  contentStatusEl.innerHTML = `正在逐帧导出 ${frameCount} 帧并编码 HEVC MP4…`;
+
+  // Do not race playback against IPC writes. Seek to every presentation timestamp and await the
+  // PNG write before advancing, so a 10-second 30fps source always produces 300 frames.
+  const renderFrames = async () => {
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+      if (finishing) return;
+      const presentationTime = Math.min(frameIndex / fps, Math.max(0, currentVideoEl!.duration - 0.0001));
+      await seekVideoFrame(presentationTime);
+      drawAdjustedVideoFrame(currentVideoEl!, output, scratch);
+      const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("浏览器无法生成无损 PNG 帧");
+      await desktopBridge!.writeVideoExportFrame!(session.id, frameIndex, new Uint8Array(await blob.arrayBuffer()));
+      if (frameIndex % Math.max(1, Math.floor(fps)) === 0) {
+        contentStatusEl.innerHTML = `正在逐帧导出：<b>${frameIndex + 1} / ${frameCount}</b>，随后编码 HEVC MP4…`;
+      }
+    }
+    await finish();
   };
-  void renderFrame().catch((error) => {
+  void renderFrames().catch((error) => {
     contentStatusEl.innerHTML = `<span class="err">无损帧导出失败：${error instanceof Error ? error.message : String(error)}</span>`;
     void finish();
   });
@@ -2273,7 +2320,7 @@ function exportAdjustedVideo() {
   const scratch = document.createElement("canvas");
   scratch.width = sourceWidth;
   scratch.height = sourceHeight;
-  const fps = Math.max(1, params.signalFrameRateFps);
+  const fps = Math.max(1, params.exportFrameRateFps);
   const stream = output.captureStream(fps);
   // Do not silently fall back to WebM: the requested delivery format is MP4/H.264. Safari and
   // some Chromium builds expose this through MediaRecorder; browsers without an MP4 recorder

@@ -102,6 +102,8 @@ export interface GUIParams {
   ledViewingAngleV: number;
   ledLifetimeHours: number;
   signalFrameRateFps: number;
+  /** Output-only frame rate; independent from the venue signal specification. */
+  exportFrameRateFps: number;
   signalScanMode: string;
   signalBitDepth: number;
   signalChroma: string;
@@ -179,6 +181,8 @@ export interface CameraLocationGUI {
   targetY: number;
   targetZ: number;
   fov: number;
+  near: number;
+  far: number;
   visible: boolean;
   isDefault: boolean;
 }
@@ -263,6 +267,8 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
         folder.add(location, "visible").name("启用").onChange(notify),
         folder.add(location, "label").name("名称").onFinishChange(notify),
         folder.add(location, "fov").name("视场 FOV（°）").onFinishChange(notify),
+        folder.add(location, "near").name("近裁剪面（m）").onFinishChange(notify),
+        folder.add(location, "far").name("远裁剪面（m）").onFinishChange(notify),
       );
       addVectorRow(folder, "位置 XYZ（m）", ["x", "y", "z"], location, notify);
       addVectorRow(folder, "目标 XYZ（m）", ["targetX", "targetY", "targetZ"], location, notify);
@@ -449,6 +455,7 @@ export function createGUIPanel(deps: GUIPanelDeps): GUIPanelHandle {
 
   const signalSpec = gui.addFolder("视频 / 音频信号规格").close();
   signalSpec.add(p, "signalFrameRateFps", 1, 240, 0.01).name("视频帧率（FPS）").onChange(deps.onDisplaySpecChange);
+  signalSpec.add(p, "exportFrameRateFps", 1, 240, 0.01).name("导出帧率（FPS）").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalScanMode").name("扫描方式").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalBitDepth", 1, 32, 1).name("位深（bit）").onChange(deps.onDisplaySpecChange);
   signalSpec.add(p, "signalChroma").name("色度采样").onChange(deps.onDisplaySpecChange);

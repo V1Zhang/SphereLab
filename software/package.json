@@ -1,6 +1,6 @@
 {
   "name": "spherelab-desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "SphereLab desktop wrapper",
   "main": "main.cjs",
@@ -8,7 +8,8 @@
     "prepare-app": "node scripts/prepare-app.mjs",
     "start": "electron .",
     "pack": "npm run prepare-app && electron-builder --dir",
-    "build": "npm run prepare-app && electron-builder"
+    "build": "npm run prepare-app && electron-builder",
+    "release:mac": "npm run prepare-app && electron-builder --mac --arm64 --publish never"
   },
   "build": {
     "appId": "com.spherelab.desktop",

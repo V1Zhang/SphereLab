@@ -39,53 +39,74 @@ async function resolveFfmpeg() {
   throw new Error("找不到 FFmpeg。请安装 FFmpeg，或设置 SPHERELAB_FFMPEG 环境变量。");
 }
 
-ipcMain.handle("video-export-start", async () => {
-  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "spherelab-erp-export-"));
-  const id = path.basename(directory);
-  videoExportSessions.set(id, { directory });
-  return { id };
+ipcMain.handle("video-export-start", async (_event, fps) => {
+  const ffmpeg = await resolveFfmpeg();
+  const result = await dialog.showSaveDialog({
+    title: "导出无损 ERP 视频",
+    defaultPath: path.join(os.homedir(), `spherelab-adjusted-video-${Date.now()}.mp4`),
+    filters: [{ name: "MP4 视频", extensions: ["mp4"] }],
+  });
+  if (result.canceled || !result.filePath) return { cancelled: true };
+
+  const child = spawn(ffmpeg, [
+    "-hide_banner", "-loglevel", "error",
+    "-framerate", String(Math.max(1, Number(fps) || 30)),
+    "-f", "image2pipe", "-vcodec", "png", "-i", "-",
+    "-an",
+    "-c:v", "libx265",
+    "-preset", "medium",
+    "-x265-params", "lossless=1",
+    "-tag:v", "hvc1",
+    "-pix_fmt", "yuv444p",
+    "-movflags", "+faststart",
+    "-y", result.filePath,
+  ]);
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const session = { child, filePath: result.filePath, stderr: "" };
+  child.stderr.on("data", (chunk) => { session.stderr += chunk.toString(); });
+  child.on("error", (error) => { session.stderr += `\n${error.message}`; });
+  videoExportSessions.set(id, session);
+  return { id, cancelled: false };
 });
 
 ipcMain.handle("video-export-frame", async (_event, id, frameIndex, bytes) => {
   const session = videoExportSessions.get(id);
   if (!session || !Number.isInteger(frameIndex) || !(bytes instanceof Uint8Array)) throw new Error("无效的视频导出帧");
-  const filename = path.join(session.directory, `frame-${String(frameIndex).padStart(6, "0")}.png`);
-  await fs.promises.writeFile(filename, Buffer.from(bytes));
+  const input = session.child.stdin;
+  if (!input || input.destroyed) throw new Error("FFmpeg 输入管道已关闭");
+  await new Promise((resolve, reject) => {
+    const onError = (error) => { cleanup(); reject(error); };
+    const onDrain = () => { cleanup(); resolve(); };
+    const cleanup = () => {
+      input.removeListener("error", onError);
+      input.removeListener("drain", onDrain);
+    };
+    input.once("error", onError);
+    if (input.write(Buffer.from(bytes))) {
+      cleanup();
+      resolve();
+    } else {
+      input.once("drain", onDrain);
+    }
+  });
 });
 
-ipcMain.handle("video-export-finish", async (_event, id, fps) => {
+ipcMain.handle("video-export-finish", async (_event, id) => {
   const session = videoExportSessions.get(id);
   if (!session) throw new Error("视频导出会话不存在");
   videoExportSessions.delete(id);
   try {
-    const ffmpeg = await resolveFfmpeg();
-    const result = await dialog.showSaveDialog({
-      title: "导出无损 ERP 视频",
-      defaultPath: path.join(os.homedir(), `spherelab-adjusted-video-${Date.now()}.mp4`),
-      filters: [{ name: "MP4 视频", extensions: ["mp4"] }],
-    });
-    if (result.canceled || !result.filePath) return { cancelled: true };
     await new Promise((resolve, reject) => {
-      const child = spawn(ffmpeg, [
-        "-hide_banner", "-loglevel", "error",
-        "-framerate", String(Math.max(1, Number(fps) || 30)),
-        "-i", path.join(session.directory, "frame-%06d.png"),
-        "-an",
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-qp", "0",
-        "-pix_fmt", "yuv444p",
-        "-movflags", "+faststart",
-        "-y", result.filePath,
-      ]);
-      let stderr = "";
-      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-      child.on("error", reject);
-      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr || `FFmpeg exited with code ${code}`)));
+      session.child.stdin.end();
+      session.child.on("error", reject);
+      session.child.on("close", (code) => code === 0
+        ? resolve()
+        : reject(new Error(session.stderr || `FFmpeg exited with code ${code}`)));
     });
-    return { cancelled: false, path: result.filePath };
-  } finally {
-    await fs.promises.rm(session.directory, { recursive: true, force: true });
+    return { cancelled: false, path: session.filePath };
+  } catch (error) {
+    session.child.kill();
+    throw error;
   }
 });
 
